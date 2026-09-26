@@ -12,15 +12,13 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from core.auth import resolve_token
-from clients.cache_manager import CacheManager
-from clients.gh_cli_client import CLIError, GHCLIClient
-from clients.graphql_client import GraphQLClient
+from clients.gh_cli_client import CLIError
+from core.protocols import GHCLIRunner
 from core.config import get_settings
 from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
-from services.discovery_service import DiscoveryService
 from services.project_service import ProjectService
+from core.factory import get_service_factory
 
 logger = logging.getLogger(__name__)
 
@@ -108,10 +106,10 @@ async def complete_issue(params: CompleteIssueInput) -> dict:
         ToolSuccess with completion details.
     """
     try:
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh = GHCLIClient()
+        gh = get_service_factory().gh()
 
         comment = params.summary or "✅ Issue completed."
         await gh.run(["issue", "comment", str(params.issue_number), "--repo", repo, "--body", comment])
@@ -136,10 +134,10 @@ async def daily_standup(params: DailyStandupInput) -> dict:
         ToolSuccess with standup data.
     """
     try:
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh = GHCLIClient()
+        gh = get_service_factory().gh()
 
         closed_args = ["issue", "list", "--repo", repo, "--state", "closed",
                        "--limit", "20", "--json", "number,title,assignees,closedAt"]
@@ -192,10 +190,10 @@ async def sprint_review(params: SprintReviewInput) -> dict:
         ToolSuccess with review data.
     """
     try:
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh = GHCLIClient()
+        gh = get_service_factory().gh()
 
         result = await gh.run(["issue", "list", "--repo", repo, "--milestone", params.milestone_title,
                                "--state", "all", "--limit", "100", "--json", "number,title,state,assignees,labels"])
@@ -236,10 +234,10 @@ async def triage_new_issues() -> dict:
         ToolSuccess with untriaged issues.
     """
     try:
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh = GHCLIClient()
+        gh = get_service_factory().gh()
 
         result = await gh.run(["issue", "list", "--repo", repo, "--state", "open",
                                "--limit", "100", "--json", "number,title,labels,milestone,assignees"])
@@ -272,10 +270,10 @@ async def escalate_overdue() -> dict:
         ToolSuccess with overdue issues.
     """
     try:
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh = GHCLIClient()
+        gh = get_service_factory().gh()
 
         ms_result = await gh.run(["api", f"repos/{repo}/milestones?state=open&per_page=50"])
         milestones = json.loads(ms_result.stdout)
@@ -318,10 +316,10 @@ async def handoff_issue(params: HandoffIssueInput) -> dict:
         ToolSuccess on success.
     """
     try:
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh = GHCLIClient()
+        gh = get_service_factory().gh()
 
         await gh.run(["issue", "edit", str(params.issue_number), "--repo", repo,
                       "--remove-assignee", params.from_user, "--add-assignee", params.to_user])
@@ -408,7 +406,7 @@ async def _set_item_fields(
             logger.warning("Failed to set Priority on item %s: %s", item_id, exc)
 
 
-async def _link_sub_issue(gh: GHCLIClient, parent_node_id: str, sub_node_id: str) -> None:
+async def _link_sub_issue(gh: GHCLIRunner, parent_node_id: str, sub_node_id: str) -> None:
     """Link a child issue as a sub-issue of the parent via the GraphQL API.
 
     Args:
@@ -448,21 +446,13 @@ async def create_epic(params: CreateEpicInput) -> dict:
         ToolSuccess with created/linked issue numbers.
     """
     try:
-        token = await resolve_token()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh = GHCLIClient()
+        gh = get_service_factory().gh()
 
-        graphql_client = GraphQLClient(token=token)
-        cache_manager = CacheManager()
-        discovery_service = DiscoveryService(
-            graphql_client=graphql_client,
-            cache_manager=cache_manager,
-        )
-        project_service = ProjectService(
-            graphql_client=graphql_client,
-            gh_client=gh,
-        )
+        graphql_client = await get_service_factory().graphql()
+        discovery_service = await get_service_factory().discovery_service(graphql_client)
+        project_service = await get_service_factory().project_service(graphql_client, gh)
 
         # Resolve the board metadata (project id, field ids, option ids) once.
         try:
@@ -587,10 +577,10 @@ async def close_sprint(params: CloseSprintInput) -> dict:
         ToolSuccess with closure details.
     """
     try:
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh = GHCLIClient()
+        gh = get_service_factory().gh()
 
         issues_result = await gh.run(["issue", "list", "--repo", repo, "--milestone", params.milestone_title,
                                       "--state", "all", "--limit", "100", "--json", "number,title,state"])
@@ -636,10 +626,10 @@ async def blocked_report() -> dict:
     """
     try:
         import re
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh = GHCLIClient()
+        gh = get_service_factory().gh()
 
         result = await gh.run(["issue", "list", "--repo", repo, "--state", "open",
                                "--limit", "100", "--json", "number,title,body,assignees,labels,milestone"])

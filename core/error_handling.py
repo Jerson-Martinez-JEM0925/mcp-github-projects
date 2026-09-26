@@ -28,6 +28,7 @@ from core.exceptions import (
     TimeoutError,
     ValidationError,
 )
+from core.context import current_request
 from core.hardening import bounded_text
 from models.responses import ToolError
 
@@ -142,11 +143,13 @@ def build_error_response(
     if suggestion is None:
         suggestion = _DEFAULT_SUGGESTIONS.get(error_type, _DEFAULT_SUGGESTIONS[ERROR_TYPE_INTERNAL])
 
+    ctx = current_request()
     return ToolError(
         error_type=error_type,
         message=message,
         suggestion=suggestion,
         request_id=request_id,
+        correlation_id=ctx.correlation_id if ctx else None,
     ).model_dump()
 
 

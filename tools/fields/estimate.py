@@ -12,15 +12,11 @@ import logging
 
 from pydantic import BaseModel, Field
 
-from core.auth import resolve_token
-from clients.cache_manager import CacheManager
-from clients.graphql_client import GraphQLClient
 from core.config import get_settings
 from core.error_handling import build_error_response, handle_tool_error
 from core.exceptions import ValidationError
 from models.responses import ToolSuccess
-from services.discovery_service import DiscoveryService
-from services.field_service import FieldService
+from core.factory import get_service_factory
 
 logger = logging.getLogger(__name__)
 
@@ -57,14 +53,9 @@ async def set_estimate(params: SetEstimateInput) -> dict:
         error_type, message, suggestion) on failure.
     """
     try:
-        token = await resolve_token()
-        graphql_client = GraphQLClient(token=token)
-        cache_manager = CacheManager()
-        discovery_service = DiscoveryService(
-            graphql_client=graphql_client,
-            cache_manager=cache_manager,
-        )
-        field_service = FieldService(graphql_client=graphql_client)
+        graphql_client = await get_service_factory().graphql()
+        discovery_service = await get_service_factory().discovery_service(graphql_client)
+        field_service = await get_service_factory().field_service(graphql_client)
 
         # 1. Get project metadata to find the Estimate field.
         metadata = await discovery_service.get_cached_or_discover()

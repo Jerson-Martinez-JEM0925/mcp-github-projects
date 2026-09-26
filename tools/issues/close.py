@@ -11,14 +11,13 @@ import logging
 
 from pydantic import BaseModel, Field
 
-from core.auth import resolve_token
-from clients.gh_cli_client import CLIError, GHCLIClient
+from clients.gh_cli_client import CLIError
 from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
 from services.issue_service import (
     DraftIssueError,
-    IssueService,
 )
+from core.factory import get_service_factory
 
 logger = logging.getLogger(__name__)
 
@@ -49,9 +48,9 @@ async def close_issue(params: CloseIssueInput) -> dict:
         message, suggestion) on failure.
     """
     try:
-        await resolve_token()
-        gh_client = GHCLIClient()
-        issue_service = IssueService(gh_client=gh_client)
+        await get_service_factory().ensure_auth()
+        gh_client = get_service_factory().gh()
+        issue_service = get_service_factory().issue_service(gh_client)
 
         try:
             await issue_service.close(issue_number=params.issue_number)

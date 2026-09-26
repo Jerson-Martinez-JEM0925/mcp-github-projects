@@ -16,11 +16,11 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from core.auth import resolve_token
-from clients.gh_cli_client import CLIError, GHCLIClient
+from clients.gh_cli_client import CLIError
 from core.config import get_settings
 from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
+from core.factory import get_service_factory
 
 logger = logging.getLogger(__name__)
 
@@ -153,10 +153,10 @@ async def verify_acceptance_criteria(params: VerifyAcceptanceCriteriaInput) -> d
         ToolSuccess with criteria verification results, or ToolError on failure.
     """
     try:
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh_client = GHCLIClient()
+        gh_client = get_service_factory().gh()
 
         result = await gh_client.run([
             "issue", "view", str(params.issue_number),
@@ -229,10 +229,10 @@ async def get_pr_linked_issues(params: GetPRLinkedIssuesInput) -> dict:
         ToolSuccess with linked issue numbers and PR state, or ToolError on failure.
     """
     try:
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh_client = GHCLIClient()
+        gh_client = get_service_factory().gh()
 
         # Fetch PR details.
         pr_result = await gh_client.run([
@@ -304,10 +304,10 @@ async def validate_issue_closure_readiness(params: ValidateIssueClosureReadiness
         ToolSuccess with readiness report, or ToolError on failure.
     """
     try:
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh_client = GHCLIClient()
+        gh_client = get_service_factory().gh()
 
         # Fetch issue details.
         issue_result = await gh_client.run([
@@ -430,10 +430,10 @@ async def close_issue_on_pr_merge(params: CloseIssueOnPRMergeInput) -> dict:
         ToolSuccess with processing summary, or ToolError on failure.
     """
     try:
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh_client = GHCLIClient()
+        gh_client = get_service_factory().gh()
 
         # Step 1: Fetch PR and verify it's merged.
         pr_result = await gh_client.run([
@@ -648,25 +648,15 @@ async def sync_closed_items_to_done(params: SyncClosedItemsToDoneInput) -> dict:
         ToolSuccess with counters (scanned, moved/would_move, skipped, errors)
         and the affected item numbers, or ToolError on failure.
     """
-    from clients.cache_manager import CacheManager
-    from clients.graphql_client import GraphQLClient
-    from services.discovery_service import DiscoveryService
-    from services.project_service import ProjectService
 
     # Content states that mean "the work is finished" and the card should be Done.
     _CLOSED_STATES = {"CLOSED", "MERGED"}
 
     try:
-        token = await resolve_token()
-        graphql_client = GraphQLClient(token=token)
-        cache_manager = CacheManager()
-        gh_client = GHCLIClient()
-        discovery = DiscoveryService(
-            graphql_client=graphql_client, cache_manager=cache_manager
-        )
-        project_service = ProjectService(
-            graphql_client=graphql_client, gh_client=gh_client
-        )
+        graphql_client = await get_service_factory().graphql()
+        gh_client = get_service_factory().gh()
+        discovery = await get_service_factory().discovery_service(graphql_client)
+        project_service = await get_service_factory().project_service(graphql_client, gh_client)
         metadata = await discovery.get_cached_or_discover()
 
         items = await project_service.list_all_items(metadata=metadata)

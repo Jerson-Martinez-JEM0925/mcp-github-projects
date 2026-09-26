@@ -107,15 +107,15 @@ async def test_create_epic_resolves_status_at_runtime() -> None:
     update_field_mock = AsyncMock()
     graphql_mock = AsyncMock(return_value={"data": {}})
 
-    with patch("tools.workflows.resolve_token", new=AsyncMock(return_value="tok")), \
-            patch("tools.workflows.GHCLIClient.run", new=run_mock), \
-            patch("tools.workflows.GHCLIClient.api_graphql", new=graphql_mock), \
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="tok")), \
+            patch("clients.gh_cli_client.GHCLIClient.run", new=run_mock), \
+            patch("clients.gh_cli_client.GHCLIClient.api_graphql", new=graphql_mock), \
             patch(
-                "tools.workflows.DiscoveryService.get_cached_or_discover",
+                "services.discovery_service.DiscoveryService.get_cached_or_discover",
                 new=AsyncMock(return_value=meta),
             ), \
-            patch("tools.workflows.ProjectService.add_item", new=add_item_mock), \
-            patch("tools.workflows.ProjectService.update_field", new=update_field_mock):
+            patch("services.project_service.ProjectService.add_item", new=add_item_mock), \
+            patch("services.project_service.ProjectService.update_field", new=update_field_mock):
         result = await create_epic(
             CreateEpicInput(title="🏔️ [Epic] Runtime IDs", body="Epic body")
         )
@@ -142,15 +142,15 @@ async def test_create_epic_creates_and_links() -> None:
     run_mock = _gh_run_factory()
     graphql_mock = AsyncMock(return_value={"data": {}})
 
-    with patch("tools.workflows.resolve_token", new=AsyncMock(return_value="tok")), \
-            patch("tools.workflows.GHCLIClient.run", new=run_mock), \
-            patch("tools.workflows.GHCLIClient.api_graphql", new=graphql_mock), \
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="tok")), \
+            patch("clients.gh_cli_client.GHCLIClient.run", new=run_mock), \
+            patch("clients.gh_cli_client.GHCLIClient.api_graphql", new=graphql_mock), \
             patch(
-                "tools.workflows.DiscoveryService.get_cached_or_discover",
+                "services.discovery_service.DiscoveryService.get_cached_or_discover",
                 new=AsyncMock(return_value=meta),
             ), \
-            patch("tools.workflows.ProjectService.add_item", new=AsyncMock(return_value="ITEM")), \
-            patch("tools.workflows.ProjectService.update_field", new=AsyncMock()):
+            patch("services.project_service.ProjectService.add_item", new=AsyncMock(return_value="ITEM")), \
+            patch("services.project_service.ProjectService.update_field", new=AsyncMock()):
         result = await create_epic(
             CreateEpicInput(
                 title="🏔️ [Epic] Both",

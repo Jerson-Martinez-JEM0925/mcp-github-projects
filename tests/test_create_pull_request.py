@@ -49,8 +49,8 @@ async def test_create_pull_request_success() -> None:
     """A successful create returns ok:true with pr_number and pr_url."""
     run_mock = AsyncMock(return_value=_cmd_result(json.dumps(PR_API_RESPONSE)))
 
-    with patch("tools.nice_to_have.resolve_token", new=AsyncMock(return_value="tok")), \
-            patch("tools.nice_to_have.GHCLIClient.run", new=run_mock):
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="tok")), \
+            patch("clients.gh_cli_client.GHCLIClient.run", new=run_mock):
         result = await create_pull_request(
             CreatePullRequestInput(
                 title="Add create_pull_request tool",
@@ -80,8 +80,8 @@ async def test_create_pull_request_draft_flag() -> None:
     """draft=True is forwarded as draft=true to the REST call."""
     run_mock = AsyncMock(return_value=_cmd_result(json.dumps(PR_API_RESPONSE)))
 
-    with patch("tools.nice_to_have.resolve_token", new=AsyncMock(return_value="tok")), \
-            patch("tools.nice_to_have.GHCLIClient.run", new=run_mock):
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="tok")), \
+            patch("clients.gh_cli_client.GHCLIClient.run", new=run_mock):
         result = await create_pull_request(
             CreatePullRequestInput(
                 title="Draft PR",
@@ -102,8 +102,8 @@ async def test_create_pull_request_links_issue() -> None:
     run_mock = AsyncMock(return_value=_cmd_result(json.dumps(PR_API_RESPONSE)))
     link_mock = AsyncMock(return_value={"ok": True, "data": {"linked": True}})
 
-    with patch("tools.nice_to_have.resolve_token", new=AsyncMock(return_value="tok")), \
-            patch("tools.nice_to_have.GHCLIClient.run", new=run_mock), \
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="tok")), \
+            patch("clients.gh_cli_client.GHCLIClient.run", new=run_mock), \
             patch("tools.nice_to_have.link_pull_request", new=link_mock):
         result = await create_pull_request(
             CreatePullRequestInput(
@@ -128,8 +128,8 @@ async def test_create_pull_request_cli_error() -> None:
         side_effect=CLIError("gh failed", return_code=1, stderr="A pull request already exists")
     )
 
-    with patch("tools.nice_to_have.resolve_token", new=AsyncMock(return_value="tok")), \
-            patch("tools.nice_to_have.GHCLIClient.run", new=run_mock):
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="tok")), \
+            patch("clients.gh_cli_client.GHCLIClient.run", new=run_mock):
         result = await create_pull_request(
             CreatePullRequestInput(title="Dup", head="feat/z")
         )

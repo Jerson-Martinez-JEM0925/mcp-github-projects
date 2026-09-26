@@ -13,11 +13,11 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from core.auth import resolve_token
-from clients.gh_cli_client import CLIError, GHCLIClient
+from clients.gh_cli_client import CLIError
 from core.config import get_settings
 from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
+from core.factory import get_service_factory
 
 logger = logging.getLogger(__name__)
 
@@ -57,10 +57,10 @@ async def sprint_planning(params: SprintPlanningInput) -> dict:
         ToolSuccess with distribution plan and workload summary.
     """
     try:
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh_client = GHCLIClient()
+        gh_client = get_service_factory().gh()
 
         result = await gh_client.run([
             "issue", "list", "--repo", repo, "--milestone", params.milestone_title,
@@ -164,10 +164,10 @@ async def generate_release_notes(params: GenerateReleaseNotesInput) -> dict:
         ToolSuccess with markdown release notes.
     """
     try:
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh_client = GHCLIClient()
+        gh_client = get_service_factory().gh()
 
         result = await gh_client.run([
             "issue", "list", "--repo", repo, "--milestone", params.milestone_title,

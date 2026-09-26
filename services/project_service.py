@@ -12,8 +12,8 @@ import json
 import logging
 from datetime import date
 
-from clients.gh_cli_client import GHCLIClient
-from clients.graphql_client import GraphQLClient
+from core.protocols import GHCLIRunner
+from core.protocols import GraphQLExecutor
 from core.config import get_settings
 from core.exceptions import ValidationError
 from graphql.mutations import (
@@ -45,8 +45,8 @@ class ProjectService:
 
     def __init__(
         self,
-        graphql_client: GraphQLClient,
-        gh_client: GHCLIClient,
+        graphql_client: GraphQLExecutor,
+        gh_client: GHCLIRunner,
         context: GitHubContext | None = None,
     ) -> None:
         self._graphql_client = graphql_client

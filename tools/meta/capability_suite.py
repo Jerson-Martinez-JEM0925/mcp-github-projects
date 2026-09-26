@@ -16,12 +16,12 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from core.auth import resolve_token
-from clients.gh_cli_client import GHCLIClient
+from core.protocols import GHCLIRunner
 from core.config import get_settings
 from core.error_handling import handle_tool_error
 from core.hardening import bounded_text, normalize_unique, parse_json_array, parse_json_items, parse_json_object
 from models.responses import ToolSuccess
+from core.factory import get_service_factory
 
 
 class IssueNumberInput(BaseModel):
@@ -118,9 +118,9 @@ class RiskInput(BaseModel):
     mitigations: list[str] = Field(default_factory=list, max_length=30)
 
 
-async def _client() -> GHCLIClient:
-    await resolve_token()
-    return GHCLIClient()
+async def _client() -> GHCLIRunner:
+    await get_service_factory().ensure_auth()
+    return get_service_factory().gh()
 
 
 def _success(data: dict[str, Any]) -> dict:
@@ -141,7 +141,7 @@ def _guard(context: str) -> Callable[[Callable[..., Awaitable[dict]]], Callable[
     return decorator
 
 
-async def _issue_view(client: GHCLIClient, number: int) -> dict[str, Any]:
+async def _issue_view(client: GHCLIRunner, number: int) -> dict[str, Any]:
     settings = get_settings()
     result = await client.run([
         "issue", "view", str(number), "--repo", f"{settings.org_name}/{settings.repo_name}",
@@ -150,7 +150,7 @@ async def _issue_view(client: GHCLIClient, number: int) -> dict[str, Any]:
     return parse_json_object(result.stdout, context="gh issue view")
 
 
-async def _issue_list(client: GHCLIClient, params: IssueSearchInput | ProjectReportInput | ProjectPlanInput) -> list[dict[str, Any]]:
+async def _issue_list(client: GHCLIRunner, params: IssueSearchInput | ProjectReportInput | ProjectPlanInput) -> list[dict[str, Any]]:
     settings = get_settings()
     args = [
         "issue", "list", "--repo", f"{settings.org_name}/{settings.repo_name}",
@@ -407,7 +407,7 @@ async def build_issue_bundle(params: IssueListInput) -> dict:
 
 # ── Project reporting and planning tools (21-40) ─────────────────────────────
 
-async def _project_items(client: GHCLIClient, limit: int) -> list[dict[str, Any]]:
+async def _project_items(client: GHCLIRunner, limit: int) -> list[dict[str, Any]]:
     settings = get_settings()
     result = await client.run(["project", "item-list", str(settings.project_number), "--owner", settings.org_name, "--format", "json", "--limit", str(limit)])
     return parse_json_items(result.stdout, context="gh project item-list")

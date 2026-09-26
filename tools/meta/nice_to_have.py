@@ -14,11 +14,11 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from core.auth import resolve_token
-from clients.gh_cli_client import CLIError, GHCLIClient
+from clients.gh_cli_client import CLIError
 from core.config import get_settings
 from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
+from core.factory import get_service_factory
 
 logger = logging.getLogger(__name__)
 
@@ -86,10 +86,10 @@ async def get_project_stats() -> dict:
         ToolSuccess with project statistics.
     """
     try:
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh_client = GHCLIClient()
+        gh_client = get_service_factory().gh()
 
         # Get milestones for sprint tracking
         ms_result = await gh_client.run([
@@ -142,10 +142,10 @@ async def get_sprint_summary(params: GetSprintSummaryInput) -> dict:
         ToolSuccess with sprint summary data.
     """
     try:
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh_client = GHCLIClient()
+        gh_client = get_service_factory().gh()
 
         ms_result = await gh_client.run([
             "api", f"repos/{repo}/milestones?state=open&per_page=100",
@@ -230,10 +230,10 @@ async def link_pull_request(params: LinkPullRequestInput) -> dict:
         ToolSuccess on success.
     """
     try:
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh_client = GHCLIClient()
+        gh_client = get_service_factory().gh()
 
         pr_result = await gh_client.run([
             "pr", "view", str(params.pr_number), "--repo", repo,
@@ -295,10 +295,10 @@ async def create_pull_request(params: CreatePullRequestInput) -> dict:
         link result when link_to_issue is provided.
     """
     try:
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh_client = GHCLIClient()
+        gh_client = get_service_factory().gh()
 
         api_args = [
             "api",
@@ -376,10 +376,10 @@ async def bulk_assign(params: BulkAssignInput) -> dict:
         ToolSuccess with results per issue.
     """
     try:
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh_client = GHCLIClient()
+        gh_client = get_service_factory().gh()
 
         if not params.assignees and not params.milestone:
             return build_error_response(

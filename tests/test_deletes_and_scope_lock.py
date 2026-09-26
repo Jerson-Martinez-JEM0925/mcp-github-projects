@@ -58,8 +58,8 @@ async def test_delete_label_refuses_without_confirm() -> None:
     from tools.deletes import DeleteLabelInput, delete_label
 
     run_mock = AsyncMock()
-    with patch("tools.deletes.resolve_token", new=AsyncMock(return_value="t")), \
-            patch("tools.deletes.GHCLIClient.run", new=run_mock):
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="t")), \
+            patch("clients.gh_cli_client.GHCLIClient.run", new=run_mock):
         result = await delete_label(DeleteLabelInput(name="bug"))
 
     assert result["ok"] is False
@@ -73,8 +73,8 @@ async def test_delete_issue_refuses_without_confirm_points_to_close() -> None:
     from tools.deletes import DeleteIssueInput, delete_issue
 
     run_mock = AsyncMock()
-    with patch("tools.deletes.resolve_token", new=AsyncMock(return_value="t")), \
-            patch("tools.deletes.GHCLIClient.run", new=run_mock):
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="t")), \
+            patch("clients.gh_cli_client.GHCLIClient.run", new=run_mock):
         result = await delete_issue(DeleteIssueInput(issue_number=5))
 
     assert result["ok"] is False
@@ -87,8 +87,8 @@ async def test_delete_milestone_refuses_without_confirm() -> None:
     from tools.deletes import DeleteMilestoneInput, delete_milestone
 
     run_mock = AsyncMock()
-    with patch("tools.deletes.resolve_token", new=AsyncMock(return_value="t")), \
-            patch("tools.deletes.GHCLIClient.run", new=run_mock):
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="t")), \
+            patch("clients.gh_cli_client.GHCLIClient.run", new=run_mock):
         result = await delete_milestone(DeleteMilestoneInput(title="Sprint 1"))
 
     assert result["ok"] is False
@@ -101,8 +101,8 @@ async def test_delete_issue_comment_refuses_without_confirm() -> None:
     from tools.deletes import DeleteIssueCommentInput, delete_issue_comment
 
     run_mock = AsyncMock()
-    with patch("tools.deletes.resolve_token", new=AsyncMock(return_value="t")), \
-            patch("tools.deletes.GHCLIClient.run", new=run_mock):
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="t")), \
+            patch("clients.gh_cli_client.GHCLIClient.run", new=run_mock):
         result = await delete_issue_comment(DeleteIssueCommentInput(comment_id=99))
 
     assert result["ok"] is False
@@ -113,8 +113,8 @@ async def test_delete_issue_comment_refuses_without_confirm() -> None:
 async def test_delete_project_item_refuses_without_confirm() -> None:
     from tools.deletes import DeleteProjectItemInput, delete_project_item
 
-    with patch("tools.deletes.resolve_token", new=AsyncMock(return_value="t")), \
-            patch("tools.deletes.GraphQLClient") as gql:
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="t")), \
+            patch("clients.graphql_client.GraphQLClient") as gql:
         result = await delete_project_item(
             DeleteProjectItemInput(item_id="PVTI_x")
         )
@@ -132,8 +132,8 @@ async def test_delete_label_proceeds_with_confirm() -> None:
     from tools.deletes import DeleteLabelInput, delete_label
 
     run_mock = AsyncMock(return_value=_cmd(""))
-    with patch("tools.deletes.resolve_token", new=AsyncMock(return_value="t")), \
-            patch("tools.deletes.GHCLIClient.run", new=run_mock):
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="t")), \
+            patch("clients.gh_cli_client.GHCLIClient.run", new=run_mock):
         result = await delete_label(DeleteLabelInput(name="bug", confirm=True))
 
     assert result["ok"] is True
@@ -148,8 +148,8 @@ async def test_delete_issue_comment_proceeds_with_confirm() -> None:
     from tools.deletes import DeleteIssueCommentInput, delete_issue_comment
 
     run_mock = AsyncMock(return_value=_cmd(""))
-    with patch("tools.deletes.resolve_token", new=AsyncMock(return_value="t")), \
-            patch("tools.deletes.GHCLIClient.run", new=run_mock):
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="t")), \
+            patch("clients.gh_cli_client.GHCLIClient.run", new=run_mock):
         result = await delete_issue_comment(
             DeleteIssueCommentInput(comment_id=99, confirm=True)
         )
@@ -172,9 +172,9 @@ async def test_delete_issue_proceeds_with_confirm_uses_graphql() -> None:
     gql_instance = MagicMock()
     gql_instance.execute_with_retry = exec_mock
 
-    with patch("tools.deletes.resolve_token", new=AsyncMock(return_value="t")), \
-            patch("tools.deletes.GHCLIClient.run", new=run_mock), \
-            patch("tools.deletes.GraphQLClient", return_value=gql_instance):
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="t")), \
+            patch("clients.gh_cli_client.GHCLIClient.run", new=run_mock), \
+            patch("clients.graphql_client.GraphQLClient", return_value=gql_instance):
         result = await delete_issue(DeleteIssueInput(issue_number=5, confirm=True))
 
     assert result["ok"] is True
@@ -198,9 +198,9 @@ async def test_delete_project_item_proceeds_with_confirm() -> None:
     gql_instance = MagicMock()
     gql_instance.execute_with_retry = exec_mock
 
-    with patch("tools.deletes.resolve_token", new=AsyncMock(return_value="t")), \
-            patch("tools.deletes.GraphQLClient", return_value=gql_instance), \
-            patch("tools.deletes.DiscoveryService", return_value=discovery):
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="t")), \
+            patch("clients.graphql_client.GraphQLClient", return_value=gql_instance), \
+            patch("services.discovery_service.DiscoveryService", return_value=discovery):
         result = await delete_project_item(
             DeleteProjectItemInput(item_id="PVTI_x", confirm=True)
         )
@@ -257,8 +257,8 @@ async def test_list_projects_scope_lock_refuses_foreign_owner(monkeypatch) -> No
     get_settings.cache_clear()
     from tools.project_provisioning import ListProjectsInput, list_projects
 
-    with patch("tools.project_provisioning.resolve_token", new=AsyncMock(return_value="t")), \
-            patch("tools.project_provisioning.GraphQLClient") as gql:
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="t")), \
+            patch("clients.graphql_client.GraphQLClient") as gql:
         result = await list_projects(ListProjectsInput(owner_login="evil-org"))
 
     assert result["ok"] is False
@@ -273,8 +273,8 @@ async def test_link_repository_scope_lock_refuses_foreign_repo(monkeypatch) -> N
     get_settings.cache_clear()
     from tools.project_provisioning import LinkRepositoryInput, link_repository
 
-    with patch("tools.project_provisioning.resolve_token", new=AsyncMock(return_value="t")), \
-            patch("tools.project_provisioning.GraphQLClient") as gql:
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="t")), \
+            patch("clients.graphql_client.GraphQLClient") as gql:
         result = await link_repository(
             LinkRepositoryInput(project_id="PVT_x", repo_name="other-repo")
         )
@@ -290,8 +290,8 @@ async def test_create_repository_disabled_under_scope_lock(monkeypatch) -> None:
     get_settings.cache_clear()
     from tools.repositories import CreateRepositoryInput, create_repository
 
-    with patch("tools.repositories.resolve_token", new=AsyncMock(return_value="t")), \
-            patch("tools.repositories.GHCLIClient.run", new=AsyncMock()) as run_mock:
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="t")), \
+            patch("clients.gh_cli_client.GHCLIClient.run", new=AsyncMock()) as run_mock:
         result = await create_repository(CreateRepositoryInput(name="new-repo"))
 
     assert result["ok"] is False
@@ -305,8 +305,8 @@ async def test_create_project_disabled_under_scope_lock(monkeypatch) -> None:
     get_settings.cache_clear()
     from tools.project_provisioning import CreateProjectInput, create_project
 
-    with patch("tools.project_provisioning.resolve_token", new=AsyncMock(return_value="t")), \
-            patch("tools.project_provisioning.GraphQLClient") as gql:
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="t")), \
+            patch("clients.graphql_client.GraphQLClient") as gql:
         result = await create_project(CreateProjectInput(title="New Board"))
 
     assert result["ok"] is False
@@ -327,8 +327,8 @@ async def test_list_projects_scope_lock_allows_configured_owner(monkeypatch) -> 
     gql_instance = MagicMock()
     gql_instance.execute_with_retry = exec_mock
 
-    with patch("tools.project_provisioning.resolve_token", new=AsyncMock(return_value="t")), \
-            patch("tools.project_provisioning.GraphQLClient", return_value=gql_instance):
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="t")), \
+            patch("clients.graphql_client.GraphQLClient", return_value=gql_instance):
         result = await list_projects(
             ListProjectsInput(owner_login="jersonmartinez", owner_type="organization")
         )
