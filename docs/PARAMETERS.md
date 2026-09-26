@@ -210,6 +210,96 @@ Closes the underlying GitHub issue by issue number. Does not modify the project 
 
 ---
 
+## server_info
+
+Diagnostics tool. Returns safe, credential-free server metadata: the effective
+access level, scope-lock state, tool-exposure counts, and the configured target.
+Takes no parameters.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| — | — | — | — | No parameters. |
+
+### Response fields
+
+| Field | Description |
+|-------|-------------|
+| `access_level` | Effective `MCP_ACCESS_LEVEL` (`read` / `write` / `full`) |
+| `access_level_meaning` | One-line gloss of what the level exposes |
+| `tool_exposure` | `classified_total`, `exposed`, `hidden`, `hidden_delete_tools` |
+| `exposed_tools` | Names of every tool registered at this level |
+| `scope_lock` | `enabled`, `variable`, `confined_to`, `meaning` |
+| `target` | Configured org / repo / project (no credentials) |
+
+---
+
+## Permanent-delete tools
+
+The following five tools perform **irreversible** deletions on GitHub. They are
+registered **only when `MCP_ACCESS_LEVEL=full`**, and every one of them refuses
+to act unless called with `confirm: true`. Without confirmation they return a
+`validation` error that states the operation is permanent and points to the
+reversible alternative.
+
+### delete_project_item
+
+Permanently deletes a card from the Project V2 board (`deleteProjectV2Item`).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `item_id` | `string` | Required | — | Project item node ID to delete (e.g. `PVTI_...`) |
+| `confirm` | `bool` | Optional | `false` | Must be `true` to proceed; the deletion is permanent |
+
+Reversible alternative: `archive_project_item` (archives; restorable in the UI)
+or `move_to_trash`.
+
+### delete_issue
+
+Permanently deletes a GitHub issue (`deleteIssue` GraphQL mutation; there is no
+REST equivalent).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `issue_number` | `int` | Required | — | Issue number to delete (positive integer) |
+| `confirm` | `bool` | Optional | `false` | Must be `true` to proceed; the deletion is permanent |
+
+Reversible alternative: `close_issue` (a closed issue can be reopened).
+
+### delete_issue_comment
+
+Permanently deletes an issue comment (REST `DELETE /issues/comments/{id}`).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `comment_id` | `int` | Required | — | Numeric REST comment ID (not the issue number) |
+| `confirm` | `bool` | Optional | `false` | Must be `true` to proceed; the deletion is permanent |
+
+Alternative: edit the comment via `edit_issue_comment` instead of deleting it.
+
+### delete_label
+
+Permanently deletes a repository label (`gh label delete --yes`). The label is
+removed from every issue/PR that carried it.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `name` | `string` | Required | — | Exact label name to delete |
+| `confirm` | `bool` | Optional | `false` | Must be `true` to proceed; the deletion is permanent |
+
+### delete_milestone
+
+Permanently deletes a milestone (REST `DELETE /milestones/{number}`), resolved
+by exact title. Issues linked to it are unlinked but not deleted.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `title` | `string` | Required | — | Exact milestone title to delete |
+| `confirm` | `bool` | Optional | `false` | Must be `true` to proceed; the deletion is permanent |
+
+Reversible alternative: `close_milestone` (keeps the milestone and its history).
+
+---
+
 ## Global Configuration
 
 These values apply across all tools and are configured at the server level.
@@ -219,6 +309,8 @@ These values apply across all tools and are configured at the server level.
 | Organization | (configured) | GitHub owner (org or user) from GH_PROJECT_ORG_NAME |
 | Repository | (configured) | Repository from GH_PROJECT_REPO_NAME |
 | Project number | (configured) | GitHub Project V2 number from GH_PROJECT_PROJECT_NUMBER |
+| Access level | `write` (`read`/`write`/`full`) | Which tools are exposed, from **`MCP_ACCESS_LEVEL`** (MCP_-prefixed). `read` = read-only tools; `write` = + create/update/close/archive; `full` = + permanent-delete tools (each needs `confirm:true`) |
+| Scope lock | `false` | From `GH_PROJECT_SCOPE_LOCK`. When `true`, every tool is confined to the configured org/repo/project; foreign targets are refused with a typed error before any mutation |
 | Timeout | `10s` (1–120s) | Maximum time for a single API request before timeout error |
 | Retry attempts | `1` (0–5) | Read timeouts only; mutations are never retried |
 | Retry delay | `2.0s` (0–60s) | Initial delay before exponential read retry |

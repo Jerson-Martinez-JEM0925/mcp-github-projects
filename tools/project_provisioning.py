@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 from auth import resolve_token
 from clients.graphql_client import GraphQLClient
 from config import get_settings
+from core.access import enforce_scope
 from error_handling import build_error_response, handle_tool_error
 from graphql.mutations import (
     CREATE_PROJECT_MUTATION,
@@ -178,6 +179,20 @@ async def create_project(params: CreateProjectInput) -> dict:
     try:
         token = await resolve_token()
         settings = get_settings()
+        if settings.scope_lock:
+            return build_error_response(
+                error_type="validation",
+                message=(
+                    "Creating a project is disabled while "
+                    "GH_PROJECT_SCOPE_LOCK=true confines this server to "
+                    f"project {settings.project_number} of "
+                    f"{settings.org_name}/{settings.repo_name}."
+                ),
+                suggestion=(
+                    "Set GH_PROJECT_SCOPE_LOCK=false to create projects, or "
+                    "create the board outside this scoped server."
+                ),
+            )
         owner_login = params.owner_login or settings.org_name
         owner_type = params.owner_type or settings.owner_type
         client = GraphQLClient(token=token)
@@ -337,6 +352,7 @@ async def link_repository(params: LinkRepositoryInput) -> dict:
         settings = get_settings()
         owner = params.owner_login or settings.org_name
         repo = params.repo_name or settings.repo_name
+        enforce_scope(owner=owner, repo=repo)
         client = GraphQLClient(token=token)
 
         repo_result = await client.execute_with_retry(
@@ -375,6 +391,7 @@ async def list_projects(params: ListProjectsInput) -> dict:
         settings = get_settings()
         owner = params.owner_login or settings.org_name
         owner_type = params.owner_type or settings.owner_type
+        enforce_scope(owner=owner)
         client = GraphQLClient(token=token)
 
         field = "user" if owner_type == "user" else "organization"

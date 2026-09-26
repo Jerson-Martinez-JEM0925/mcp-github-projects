@@ -25,6 +25,12 @@ higher-level capabilities for reporting, planning, roadmaps, and automation.
 - **GitHub Projects V2 native** — GraphQL v4 for field/board mutations, REST/`gh`
   for issue CRUD, with automatic delegation to the right API per operation.
 - **Organization *and* user projects** via a single `GH_PROJECT_OWNER_TYPE` switch.
+- **Access levels** — `MCP_ACCESS_LEVEL=read|write|full` decides which tools are
+  even registered: `read` exposes read-only tools, `write` (default) adds
+  create/update/close/archive, `full` also exposes permanent-delete tools (each
+  gated behind `confirm:true`). See [docs/CAPABILITIES.md](docs/CAPABILITIES.md).
+- **Scope lock** — `GH_PROJECT_SCOPE_LOCK=true` fences every tool to the
+  configured org/repo/project; foreign targets are refused before any mutation.
 - **Docker-first** — one image, zero host dependencies, launched on demand by the
   MCP client over stdio.
 - **MCP-client agnostic** — works with any client that speaks MCP over stdio; no
@@ -142,6 +148,8 @@ The server registers **100+ tools**. A category overview:
 | **Planning & Workflows** | Sprints, standups, epics, triage, releases | `sprint_planning`, `create_epic`, `close_sprint`, `daily_standup`, `sprint_review`, `triage_new_issues`, `escalate_overdue`, `generate_release_notes`, `complete_issue` |
 | **PR ↔ Issue lifecycle** | Verify acceptance, link PRs, gate closures | `verify_acceptance_criteria`, `get_pr_linked_issues`, `validate_issue_closure_readiness`, `close_issue_on_pr_merge` |
 | **Metrics** | Board and sprint statistics | `get_project_stats`, `get_sprint_summary` |
+| **Diagnostics** | Report effective access level, scope lock, and target | `server_info` |
+| **Permanent delete** *(access level `full`, each needs `confirm:true`)* | Irreversible removals | `delete_project_item`, `delete_issue`, `delete_issue_comment`, `delete_label`, `delete_milestone` |
 | **Extended capability suite (~60)** | Reporting, roadmaps, changelogs, backlog ranking, risk registers, retrospectives | `project_health_report`, `project_export_markdown`, `plan_next_sprint`, `prioritize_backlog`, `generate_risk_register`, `build_roadmap_markdown`, `build_sprint_retrospective` |
 
 Tools that could perform broad mutations return a `dry_run` plan by default. The
@@ -208,6 +216,8 @@ without them.
 | `GH_PROJECT_REPO_NAME` | **yes** | — | Repository within the owner |
 | `GH_PROJECT_PROJECT_NUMBER` | **yes** | — | Project V2 number (1–100000) |
 | `GH_PROJECT_OWNER_TYPE` | — | `organization` | `organization` or `user` |
+| `MCP_ACCESS_LEVEL` | — | `write` | Which tools are exposed: `read`, `write`, or `full`. **Note: MCP_-prefixed, not GH_PROJECT_.** |
+| `GH_PROJECT_SCOPE_LOCK` | — | `false` | Confine every tool to the configured org/repo/project |
 | `GH_PROJECT_PROFILE` | — | — | Load `profiles/<name>.env` instead of root `.env` |
 | `GH_PROJECT_TIMEOUT_SECONDS` | — | `10` | Per-call timeout (1–120) |
 | `GH_PROJECT_RETRY_ATTEMPTS` | — | `1` | Read retries (0–5; mutations never retry) |
@@ -222,6 +232,38 @@ namespaced per `owner/repo/project`, rejects future timestamps, and is never
 reused across targets. See [docs/PARAMETERS.md](docs/PARAMETERS.md) for the full
 range table and [docs/HARDENING_200.md](docs/HARDENING_200.md) for the runtime
 hardening register.
+
+### Access levels & scope lock
+
+Two independent switches narrow what an MCP client can do — enforced by the
+server, not by trust in the client.
+
+**`MCP_ACCESS_LEVEL`** decides which tools are *registered* (a hidden tool is
+invisible to the client, not merely refused):
+
+| Level | Exposes | Permanent deletes |
+|-------|---------|-------------------|
+| `read` | read-only tools (discovery, listing, reporting) | hidden |
+| `write` *(default)* | read + create / update / close / archive / move | hidden |
+| `full` | everything | exposed, each requiring `confirm:true` |
+
+The five permanent-delete tools (`delete_project_item`, `delete_issue`,
+`delete_issue_comment`, `delete_label`, `delete_milestone`) exist ONLY at
+`full`, and each refuses unless called with `confirm:true`, pointing you at the
+reversible alternative (`close_issue`, `archive_project_item`, …).
+
+> `MCP_ACCESS_LEVEL` is **`MCP_`-prefixed** (not `GH_PROJECT_`), matching the
+> write-policy variable convention in the sibling `mcp-monday-projects` server.
+
+**`GH_PROJECT_SCOPE_LOCK=true`** confines every tool to the configured
+`GH_PROJECT_ORG_NAME` / `GH_PROJECT_REPO_NAME` / `GH_PROJECT_PROJECT_NUMBER`. A
+call that targets any other owner/repo/project is refused with a typed error
+naming the variable, *before* any mutation runs. Creating repositories or new
+projects is disabled while the lock is on. (Parity concept with
+`mcp-monday-projects`' `MONDAY_WORKSPACE_ID`.)
+
+Call the `server_info` tool at any time to see the effective access level, scope
+lock, and target — no credentials are ever included in its output.
 
 ---
 
