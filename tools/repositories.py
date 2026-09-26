@@ -13,6 +13,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from clients.gh_cli_client import CLIError, GHCLIClient
+from core.access import enforce_scope
 from core.auth import resolve_token
 from core.config import get_settings
 from core.error_handling import build_error_response, handle_tool_error
@@ -130,6 +131,22 @@ async def create_repository(params: CreateRepositoryInput) -> dict:
     try:
         await resolve_token()
         owner = _owner_login(params)
+        settings = get_settings()
+        if settings.scope_lock:
+            return build_error_response(
+                error_type="validation",
+                message=(
+                    "Creating a repository is disabled while "
+                    "GH_PROJECT_SCOPE_LOCK=true confines this server to "
+                    f"{settings.org_name}/{settings.repo_name} "
+                    f"(project {settings.project_number})."
+                ),
+                suggestion=(
+                    "Set GH_PROJECT_SCOPE_LOCK=false to create repositories, "
+                    "or create the repository outside this scoped server."
+                ),
+            )
+        enforce_scope(owner=owner)
         if params.visibility == "internal" and params.owner_type != "organization":
             return build_error_response(
                 error_type="validation",

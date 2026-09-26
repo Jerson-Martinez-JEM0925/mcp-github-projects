@@ -3,6 +3,49 @@
 This document defines the minimum permissions required for each MCP tool,
 organized by capability domain. Use this to configure least-privilege tokens.
 
+## Access levels & scope lock
+
+Two server-enforced switches sit ABOVE the per-tool capability model below.
+They narrow what a client can do regardless of what the token allows.
+
+### `MCP_ACCESS_LEVEL` — which tools are registered
+
+| Level | Registered tools | Permanent-delete tools |
+|-------|------------------|------------------------|
+| `read` | read-only tools only | not registered |
+| `write` *(default)* | read + write (create/update/close/archive/move) | not registered |
+| `full` | every tool | registered, each requires `confirm:true` |
+
+A tool hidden at the active level is **not registered** — the client cannot see
+or call it (`server_info.tool_exposure` reports how many are hidden, including
+`hidden_delete_tools`). The variable is **`MCP_`-prefixed** (not `GH_PROJECT_`),
+matching the write-policy variable convention in `mcp-monday-projects`.
+
+The five permanent-delete tools (`delete_project_item`, `delete_issue`,
+`delete_issue_comment`, `delete_label`, `delete_milestone`) are the only tools
+classified *delete*. They appear ONLY at `full`, and each refuses unless called
+with `confirm:true`, naming the reversible alternative in its refusal.
+
+### `GH_PROJECT_SCOPE_LOCK` — target confinement
+
+| Value | Effect |
+|-------|--------|
+| `false` *(default)* | The server is as wide as the token allows. |
+| `true` | Every tool is confined to the configured `GH_PROJECT_ORG_NAME` / `GH_PROJECT_REPO_NAME` / `GH_PROJECT_PROJECT_NUMBER`. A call naming any other owner/repo/project is refused with a typed error naming `GH_PROJECT_SCOPE_LOCK`, before any mutation. Creating repositories / new projects is disabled while the lock is on. |
+
+This is the parity concept with `mcp-monday-projects`' `MONDAY_WORKSPACE_ID`.
+`server_info` reports both the level and the scope lock at runtime.
+
+### Recommended presets
+
+| Profile | `MCP_ACCESS_LEVEL` | `GH_PROJECT_SCOPE_LOCK` |
+|---------|--------------------|-------------------------|
+| Analyst / reporting | `read` | `true` |
+| Day-to-day automation | `write` | `true` |
+| Maintenance (incl. deletes) | `full` | `false` |
+
+---
+
 ## Capability Definitions
 
 | Capability | Description |
@@ -224,6 +267,34 @@ organized by capability domain. Use this to configure least-privilege tokens.
 | `create_epic` | `issues.write`, `projects.write`, `comments.write` | workflows.py |
 | `blocked_report` | `projects.read`, `issues.read` | workflows.py |
 | `bulk_assign` | `issues.write` | nice_to_have.py |
+
+### Diagnostics
+
+| Tool | Capabilities | Module |
+|------|-------------|--------|
+| `server_info` | _(none — reads local settings only)_ | server_info.py |
+
+### Project Provisioning
+
+| Tool | Capabilities | Module |
+|------|-------------|--------|
+| `create_project` | `projects.write` | project_provisioning.py |
+| `update_project` | `projects.write` | project_provisioning.py |
+| `create_project_field` | `projects.write` | project_provisioning.py |
+| `link_repository` | `projects.write` | project_provisioning.py |
+| `list_projects` | `projects.read` | project_provisioning.py |
+
+### Permanent Delete (access level `full` only — each requires `confirm:true`)
+
+These are **irreversible**. Registered ONLY when `MCP_ACCESS_LEVEL=full`.
+
+| Tool | Capabilities | API | Reversible alternative |
+|------|-------------|-----|------------------------|
+| `delete_project_item` | `projects.write` | GraphQL `deleteProjectV2Item` | `archive_project_item` / `move_to_trash` |
+| `delete_issue` | `issues.write` | GraphQL `deleteIssue` | `close_issue` |
+| `delete_issue_comment` | `comments.write` | REST `DELETE issues/comments/{id}` | edit via `edit_issue_comment` |
+| `delete_label` | `labels.write` | REST `gh label delete` | — (leave unused) |
+| `delete_milestone` | `planning.write` | REST `DELETE milestones/{n}` | `close_milestone` |
 
 ### Text Processing (Local / No API)
 

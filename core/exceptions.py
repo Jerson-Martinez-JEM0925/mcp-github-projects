@@ -77,3 +77,23 @@ class ValidationError(GitHubProjectError):
     Used by the service layer to reject values that don't meet
     business rules (e.g., estimate out of range or wrong granularity).
     """
+
+
+class ScopeLockError(GitHubProjectError):
+    """Raised when a call targets a resource outside the locked scope.
+
+    When GH_PROJECT_SCOPE_LOCK=true, every tool is confined to the configured
+    GH_PROJECT_ORG_NAME / GH_PROJECT_REPO_NAME / GH_PROJECT_PROJECT_NUMBER.
+    A tool that receives an owner/repo/project override naming anything else
+    raises this BEFORE any mutation reaches GitHub. The message names the
+    GH_PROJECT_SCOPE_LOCK variable so the operator knows what to change.
+    """
+
+
+class AccessDeniedError(GitHubProjectError):
+    """Raised when an operation is not permitted at the current access level.
+
+    Permanent-delete tools are only exposed at MCP_ACCESS_LEVEL=full, and each
+    additionally requires confirm=true. This is raised when a delete tool is
+    invoked without confirmation.
+    """

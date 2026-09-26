@@ -19,10 +19,12 @@ import logging
 from typing import Any
 
 from core.exceptions import (
+    AccessDeniedError,
     AuthenticationError,
     GitHubProjectError,
     GraphQLError,
     RateLimitError,
+    ScopeLockError,
     TimeoutError,
     ValidationError,
 )
@@ -90,7 +92,7 @@ def classify_error(exc: Exception) -> str:
     if isinstance(exc, AuthenticationError):
         return ERROR_TYPE_AUTHENTICATION
 
-    if isinstance(exc, ValidationError):
+    if isinstance(exc, (ValidationError, ScopeLockError, AccessDeniedError)):
         return ERROR_TYPE_VALIDATION
 
     if isinstance(exc, RateLimitError):

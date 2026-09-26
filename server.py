@@ -16,6 +16,7 @@ import sys
 from fastmcp import FastMCP
 
 from core.auth import resolve_token, validate_scopes
+from core.access import AccessLevel, is_exposed
 from core.config import get_settings
 from tools.projects.archive import (
     archive_project_item,
@@ -74,6 +75,14 @@ from tools.pull_requests.pr_issue_lifecycle import (
     sync_closed_items_to_done,
 )
 from tools.meta import capability_suite
+from tools.deletes import (
+    delete_project_item,
+    delete_issue,
+    delete_issue_comment,
+    delete_label,
+    delete_milestone,
+)
+from tools.meta.server_info import server_info
 from tools.project_provisioning import (
     create_project,
     update_project,
@@ -88,64 +97,108 @@ mcp = FastMCP("github-project-management")
 
 # ── Register Tools ───────────────────────────────────────────────────────────
 
-# In FastMCP 2.14+, use mcp.tool() as a decorator wrapper for pre-defined functions
-mcp.tool()(discover_ids)
-mcp.tool()(list_project_items)
-mcp.tool()(create_project_item)
-mcp.tool()(update_project_item_fields)
-mcp.tool()(add_item_to_project)
-mcp.tool()(set_estimate)
-mcp.tool()(archive_project_item)
-mcp.tool()(move_to_done)
-mcp.tool()(move_to_trash)
-mcp.tool()(close_issue)
-mcp.tool()(comment_issue)
-mcp.tool()(add_sub_issue)
-mcp.tool()(edit_issue)
-mcp.tool()(create_milestone)
-mcp.tool()(close_milestone)
-mcp.tool()(list_milestones)
-mcp.tool()(create_label)
-mcp.tool()(list_labels)
-mcp.tool()(bulk_close_issues)
-mcp.tool()(search_issues)
-mcp.tool()(move_to_status)
-mcp.tool()(bulk_update_items)
-mcp.tool()(get_issue_detail)
-mcp.tool()(list_sub_issues)
-mcp.tool()(remove_sub_issue)
-mcp.tool()(reopen_issue)
-mcp.tool()(get_project_stats)
-mcp.tool()(get_sprint_summary)
-mcp.tool()(link_pull_request)
-mcp.tool()(create_pull_request)
-mcp.tool()(create_repository)
-mcp.tool()(bulk_assign)
-mcp.tool()(sprint_planning)
-mcp.tool()(generate_release_notes)
-mcp.tool()(complete_issue_workflow)
-mcp.tool()(daily_standup)
-mcp.tool()(sprint_review)
-mcp.tool()(triage_new_issues)
-mcp.tool()(escalate_overdue)
-mcp.tool()(handoff_issue)
-mcp.tool()(create_epic)
-mcp.tool()(close_sprint)
-mcp.tool()(blocked_report)
-mcp.tool()(verify_acceptance_criteria)
-mcp.tool()(get_pr_linked_issues)
-mcp.tool()(validate_issue_closure_readiness)
-mcp.tool()(close_issue_on_pr_merge)
-mcp.tool()(sync_closed_items_to_done)
-mcp.tool()(create_project)
-mcp.tool()(update_project)
-mcp.tool()(create_project_field)
-mcp.tool()(link_repository)
-mcp.tool()(list_projects)
+# In FastMCP 2.14+, use mcp.tool() as a decorator wrapper for pre-defined functions.
+#
+# Registration is GATED by MCP_ACCESS_LEVEL (issue #34): every tool is
+# classified read/write/delete in core.access (single source of truth), and
+# only tools exposed at the configured level are registered — a hidden write or
+# delete tool is not even visible to the client. read < write (DEFAULT) < full.
+# The permanent-delete tools appear only at 'full'.
 
-# Register the extended capability suite (60 additional tools).
-for _tool_name in capability_suite.CAPABILITY_TOOL_NAMES:
-    mcp.tool()(getattr(capability_suite, _tool_name))
+_ALL_TOOLS: list = [
+    # Core operational subset (explicit functions).
+    discover_ids,
+    list_project_items,
+    create_project_item,
+    update_project_item_fields,
+    add_item_to_project,
+    set_estimate,
+    archive_project_item,
+    move_to_done,
+    move_to_trash,
+    close_issue,
+    comment_issue,
+    add_sub_issue,
+    edit_issue,
+    create_milestone,
+    close_milestone,
+    list_milestones,
+    create_label,
+    list_labels,
+    bulk_close_issues,
+    search_issues,
+    move_to_status,
+    bulk_update_items,
+    get_issue_detail,
+    list_sub_issues,
+    remove_sub_issue,
+    reopen_issue,
+    get_project_stats,
+    get_sprint_summary,
+    link_pull_request,
+    create_pull_request,
+    create_repository,
+    bulk_assign,
+    sprint_planning,
+    generate_release_notes,
+    complete_issue_workflow,
+    daily_standup,
+    sprint_review,
+    triage_new_issues,
+    escalate_overdue,
+    handoff_issue,
+    create_epic,
+    close_sprint,
+    blocked_report,
+    verify_acceptance_criteria,
+    get_pr_linked_issues,
+    validate_issue_closure_readiness,
+    close_issue_on_pr_merge,
+    sync_closed_items_to_done,
+    create_project,
+    update_project,
+    create_project_field,
+    link_repository,
+    list_projects,
+    # Diagnostics (issue #34).
+    server_info,
+    # Permanent-delete tools (issue #34) — only registered at 'full'.
+    delete_project_item,
+    delete_issue,
+    delete_issue_comment,
+    delete_label,
+    delete_milestone,
+]
+
+# Extend with the 60-tool capability suite (dynamically-defined functions).
+_ALL_TOOLS.extend(
+    getattr(capability_suite, _name) for _name in capability_suite.CAPABILITY_TOOL_NAMES
+)
+
+
+def _register_tools() -> dict[str, int]:
+    """Register every tool exposed at the configured access level.
+
+    Returns a small tally (registered / hidden / total) for the startup log.
+    ``complete_issue_workflow`` registers under its MCP name ``complete_issue``,
+    which is how it is classified in core.access.
+    """
+    level = AccessLevel.parse(get_settings().access_level)
+    registered = 0
+    hidden = 0
+    for _fn in _ALL_TOOLS:
+        # FastMCP registers a tool under the function's __name__; the workflow
+        # complete_issue is imported under an alias, so resolve its real name.
+        tool_name = "complete_issue" if _fn is complete_issue_workflow else _fn.__name__
+        if is_exposed(tool_name, level):
+            mcp.tool()(_fn)
+            registered += 1
+        else:
+            hidden += 1
+    return {"level": level.value, "registered": registered, "hidden": hidden}
+
+
+_REGISTRATION = _register_tools()
 
 
 # ── Startup Authentication ───────────────────────────────────────────────────
@@ -194,7 +247,11 @@ async def _validate_auth_on_startup() -> None:
 
     print(
         "github-project-management MCP server ready. "
-        "Authentication validated successfully.",
+        "Authentication validated successfully. "
+        f"Access level: {_REGISTRATION['level']} "
+        f"({_REGISTRATION['registered']} tools registered, "
+        f"{_REGISTRATION['hidden']} hidden). "
+        f"Scope lock: {'on' if get_settings().scope_lock else 'off'}.",
         file=sys.stderr,
     )
 

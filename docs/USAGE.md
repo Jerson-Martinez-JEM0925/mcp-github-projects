@@ -543,6 +543,65 @@ Output: { blocked_count, issues: [{ number, title, assignees, milestone, depende
 
 ---
 
+## 🔐 Access control & diagnostics
+
+Two server-side switches govern the whole surface (set in the environment /
+`.env`, not per call):
+
+- **`MCP_ACCESS_LEVEL`** = `read` | `write` (default) | `full` — which tools are
+  registered. Delete tools appear only at `full`.
+- **`GH_PROJECT_SCOPE_LOCK`** = `true` | `false` (default) — confine every tool
+  to the configured org/repo/project.
+
+### server_info
+
+Returns the effective access level, scope lock, tool-exposure counts, and the
+configured target. Credential-free. No arguments.
+
+```
+Input:  {}
+Output: { access_level, access_level_meaning, tool_exposure: { classified_total,
+          exposed, hidden, hidden_delete_tools }, exposed_tools: [...],
+          scope_lock: { enabled, variable, confined_to, meaning }, target }
+```
+
+### Permanent-delete tools (access level `full`, each requires `confirm: true`)
+
+Each tool is **irreversible** and refuses without `confirm: true`, pointing you
+at the reversible alternative. They are not even registered below `full`.
+
+```
+delete_project_item   Input: { "item_id": "PVTI_...", "confirm": true }
+                      Output: { item_id, deleted_item_id, deleted: true }
+                      Reversible instead: archive_project_item / move_to_trash
+
+delete_issue          Input: { "issue_number": 42, "confirm": true }
+                      Output: { issue_number, repository, deleted: true }
+                      Reversible instead: close_issue
+
+delete_issue_comment  Input: { "comment_id": 1234567, "confirm": true }
+                      Output: { comment_id, deleted: true }
+
+delete_label          Input: { "name": "wontfix", "confirm": true }
+                      Output: { name, deleted: true }
+
+delete_milestone      Input: { "title": "Sprint 1", "confirm": true }
+                      Output: { title, number, deleted: true }
+                      Reversible instead: close_milestone
+```
+
+Without `confirm: true` every one of these returns
+`{ ok: false, error_type: "validation", message: "... is PERMANENT ...",
+suggestion: "... call again with confirm=true ... or use <alternative>" }` and
+makes no API call.
+
+Under `GH_PROJECT_SCOPE_LOCK=true`, tools that accept an owner/repo/project
+override (`list_projects`, `link_repository`, `create_project`,
+`create_repository`) refuse a foreign target with a `validation` error naming
+`GH_PROJECT_SCOPE_LOCK`, before any API call.
+
+---
+
 ## Error Handling
 
 All tools return either a success or error response:

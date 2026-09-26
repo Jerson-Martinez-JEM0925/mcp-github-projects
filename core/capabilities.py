@@ -153,6 +153,24 @@ TOOL_CAPABILITIES: dict[str, FrozenSet[Capability]] = {
     "link_pull_request": frozenset({PRW, IW}),
     "create_pull_request": frozenset({PRW, IW}),
 
+    # --- Permanent delete (issue #34) — exposed only at MCP_ACCESS_LEVEL=full ---
+    "delete_project_item": frozenset({PW}),
+    "delete_issue": frozenset({IW}),
+    "delete_issue_comment": frozenset({CW}),
+    "delete_label": frozenset({LW}),
+    "delete_milestone": frozenset({PLW}),
+
+    # --- Diagnostics ---
+    "server_info": frozenset(),
+
+    # --- Repository & Project provisioning ---
+    "create_repository": frozenset({IW}),
+    "create_project": frozenset({PW}),
+    "update_project": frozenset({PW}),
+    "create_project_field": frozenset({PW}),
+    "link_repository": frozenset({PW}),
+    "list_projects": frozenset({PR}),
+
     # --- Workflow Orchestration ---
     "daily_standup": frozenset({PR, IR, CW}),
     "sprint_review": frozenset({PR, PLR, IR}),

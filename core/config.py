@@ -123,6 +123,34 @@ class GitHubProjectSettings(BaseSettings):
         ),
     )
 
+    # ── Access level & scope lock (issue #34) ────────────────────
+    # access_level reads MCP_ACCESS_LEVEL (NO GH_PROJECT_ prefix — parity with
+    # mcp-monday-projects, whose write-policy vars are MCP_-prefixed). It
+    # governs which tools the server registers: read < write < full.
+    access_level: str = Field(
+        default="write",
+        validation_alias="MCP_ACCESS_LEVEL",
+        description=(
+            "Server access level: 'read' (only read tools exposed), 'write' "
+            "(DEFAULT — today's create/update/close/archive surface, no "
+            "permanent deletes), or 'full' (also exposes permanent-delete "
+            "tools, each requiring confirm=true). Set via MCP_ACCESS_LEVEL."
+        ),
+    )
+    # scope_lock reads GH_PROJECT_SCOPE_LOCK (prefixed) — parity concept with
+    # mcp-monday-projects' MONDAY_WORKSPACE_ID. When true, every tool is
+    # confined to the configured org/repo/project target.
+    scope_lock: bool = Field(
+        default=False,
+        description=(
+            "When true (GH_PROJECT_SCOPE_LOCK=true), confine every tool to the "
+            "configured GH_PROJECT_ORG_NAME / GH_PROJECT_REPO_NAME / "
+            "GH_PROJECT_PROJECT_NUMBER; a call targeting any other "
+            "owner/repo/project is refused with a typed error naming the "
+            "variable, before any mutation. Default false (unrestricted)."
+        ),
+    )
+
     # ── Timeouts & Retry ─────────────────────────────────────────
     timeout_seconds: int = Field(default=10, ge=1, le=120)
     retry_delay_seconds: float = Field(default=2.0, ge=0, le=60)
@@ -207,6 +235,15 @@ class GitHubProjectSettings(BaseSettings):
                 f"'user' (got '{self.owner_type}')."
             )
         self.owner_type = normalized
+
+        # Validate & normalize the access level (read | write | full).
+        access = (self.access_level or "write").strip().lower()
+        if access not in ("read", "write", "full"):
+            raise ValueError(
+                "MCP_ACCESS_LEVEL must be 'read', 'write', or 'full' "
+                f"(got '{self.access_level}')."
+            )
+        self.access_level = access
 
         missing = []
         if not self.org_name:

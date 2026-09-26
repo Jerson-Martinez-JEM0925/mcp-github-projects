@@ -176,3 +176,37 @@ mutation LinkRepo($projectId: ID!, $repositoryId: ID!) {
   }
 }
 """.strip()
+
+# ── Permanent-delete mutations (issue #34) ───────────────────────────────────
+# These are IRREVERSIBLE on GitHub's side. They are exposed only at
+# MCP_ACCESS_LEVEL=full and each wrapping tool requires confirm=true.
+
+# deleteProjectV2Item removes a card from a Project V2 board permanently.
+# Input: {projectId: ID!, itemId: ID!}; returns the deleted item's id.
+# https://docs.github.com/en/graphql/reference/mutations#deleteprojectv2item
+DELETE_PROJECT_ITEM_MUTATION: str = """
+mutation DeleteProjectItem($projectId: ID!, $itemId: ID!) {
+  deleteProjectV2Item(input: {
+    projectId: $projectId
+    itemId: $itemId
+  }) {
+    deletedItemId
+  }
+}
+""".strip()
+
+# deleteIssue permanently deletes an issue (GraphQL-only; there is no REST
+# endpoint for issue deletion). Input: {issueId: ID!}; returns the owning
+# repository so the caller can confirm the target.
+# https://docs.github.com/en/graphql/reference/mutations#deleteissue
+DELETE_ISSUE_MUTATION: str = """
+mutation DeleteIssue($issueId: ID!) {
+  deleteIssue(input: {
+    issueId: $issueId
+  }) {
+    repository {
+      nameWithOwner
+    }
+  }
+}
+""".strip()
