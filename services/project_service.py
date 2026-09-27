@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import date
 
 from core.protocols import GHCLIRunner
@@ -30,6 +31,13 @@ from models.items import ProjectItem
 from models.metadata import ProjectField, ProjectMetadata
 
 logger = logging.getLogger(__name__)
+
+_LEADING_SYMBOLS = re.compile(r"^[\W_]+", re.UNICODE)
+
+
+def bare_option_name(name: str) -> str:
+    """Option name without a leading emoji/symbol prefix, casefolded."""
+    return _LEADING_SYMBOLS.sub("", name or "").strip().casefold()
 
 
 class ProjectService:
@@ -847,6 +855,15 @@ class ProjectService:
         for option in field.options:
             if option.name == value:
                 return option.id
+
+        # Fallback: match ignoring a leading emoji/symbol prefix and case, so
+        # "Done" resolves "✅ Done" and "in progress" resolves "🛠 In Progress"
+        # (move_to_done / move_to_trash pass bare names). Only an UNIQUE match
+        # is accepted; ambiguity still fails with the list of valid options.
+        wanted = bare_option_name(value)
+        matches = [opt for opt in field.options if bare_option_name(opt.name) == wanted]
+        if wanted and len(matches) == 1:
+            return matches[0].id
 
         valid_options = [opt.name for opt in field.options]
         raise ValidationError(

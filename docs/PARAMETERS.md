@@ -30,6 +30,8 @@ Lists project board items with optional field-based filtering. Returns up to 200
 
 ### Valid Status Values
 
+Status and Priority options are read from your board at runtime (`discover_ids`), never hardcoded; the tables below are an example board. A leading emoji is optional when naming an option (`Done` matches `✅ Done`) as long as the match is unique.
+
 | Value | Description |
 |-------|-------------|
 | `Backlog` | Items not yet scheduled for active development work |

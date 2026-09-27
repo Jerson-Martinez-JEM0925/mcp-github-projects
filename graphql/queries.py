@@ -335,3 +335,33 @@ def extract_owner_id(
     if isinstance(node, dict):
         return node.get("id")
     return None
+
+# ── Board structure (issue #26) ──────────────────────────────────────────────
+
+# Current options of one single-select field, with colour and description so
+# an options update can preserve what it does not change.
+SINGLE_SELECT_FIELD_OPTIONS_QUERY: str = """
+query SingleSelectFieldOptions($fieldId: ID!) {
+  node(id: $fieldId) {
+    ... on ProjectV2SingleSelectField {
+      id
+      name
+      options { id name color description }
+    }
+  }
+}
+""".strip()
+
+# Views of a project (id, number, name, layout, filter).
+PROJECT_VIEWS_QUERY: str = """
+query ProjectViews($projectId: ID!) {
+  node(id: $projectId) {
+    ... on ProjectV2 {
+      url
+      views(first: 50) {
+        nodes { id number name layout filter }
+      }
+    }
+  }
+}
+""".strip()

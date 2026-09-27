@@ -9,6 +9,8 @@ All GraphQL operations used by the GitHub Project Management MCP Server.
 | `DiscoverProject` | `$org: String!`, `$number: Int!` | Discovers the project node ID, all field IDs, and field option IDs for the organization project. |
 | `ListProjectItems` | `$org: String!`, `$number: Int!`, `$first: Int!`, `$after: String` | Fetches project items with pagination, including content, field values, assignees, and labels. |
 | `GetItemStatus` | `$itemId: ID!` | Retrieves a project item's current status, archive state, and content type by node ID. |
+| `SingleSelectFieldOptions` | `$fieldId: ID!` | Current options (id, name, color, description) of one single-select field — read before `set_field_options` builds its plan. |
+| `ProjectViews` | `$projectId: ID!` | The project's views (id, number, name, layout, filter) for `list_project_views`. |
 
 ## Mutations
 
@@ -18,6 +20,13 @@ All GraphQL operations used by the GitHub Project Management MCP Server.
 | `ArchiveItem` | `$projectId: ID!`, `$itemId: ID!` | Archives a project item, removing it from the active project board. |
 | `CreateField` | `$projectId: ID!`, `$name: String!`, `$dataType: ProjectV2CustomFieldType!` | Creates a new custom field on the project (used for auto-creating the Estimate field). |
 | `AddItemToProject` | `$projectId: ID!`, `$contentId: ID!` | Adds an existing issue to the project board by its content node ID. |
+| `UpdateSingleSelectOptions` | `$fieldId: ID!`, `$options: [ProjectV2SingleSelectFieldOptionInput!]` | `updateProjectV2Field` — replaces a single-select field's options; options sent with their `id` keep identity and item values (`set_field_options`). |
+| `CreateProjectView` | `$projectId: ID!`, `$name: String!`, `$layout: ProjectV2ViewLayout!` | `createProjectV2View` — adds a BOARD/TABLE/ROADMAP view. |
+| `UpdateProjectViewFilter` | `$viewId: ID!`, `$filter: String!` | `updateProjectV2View` — sets the new view's filter. |
+
+These tables cover the operations described in this guide. Every query and
+mutation the server sends is defined in `graphql/queries.py` and
+`graphql/mutations.py` (tools never embed GraphQL inline).
 
 ## Query Details
 

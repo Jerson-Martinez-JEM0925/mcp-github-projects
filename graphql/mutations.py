@@ -210,3 +210,54 @@ mutation DeleteIssue($issueId: ID!) {
   }
 }
 """.strip()
+
+# ── Board structure (issue #26) ──────────────────────────────────────────────
+
+# updateProjectV2Field replaces a single-select field's option list. Options
+# sent WITH their existing `id` keep their identity, so items keep their value;
+# an existing option left out of the list is removed and items holding it lose
+# the value. Verified against the public schema on 2026-09-27.
+# https://docs.github.com/en/graphql/reference/mutations#updateprojectv2field
+UPDATE_SINGLE_SELECT_OPTIONS_MUTATION: str = """
+mutation UpdateSingleSelectOptions($fieldId: ID!, $options: [ProjectV2SingleSelectFieldOptionInput!]) {
+  updateProjectV2Field(input: {
+    fieldId: $fieldId
+    singleSelectOptions: $options
+  }) {
+    projectV2Field {
+      ... on ProjectV2SingleSelectField {
+        id
+        name
+        options { id name color description }
+      }
+    }
+  }
+}
+""".strip()
+
+# createProjectV2View adds a view (table, board or roadmap) to a project.
+# https://docs.github.com/en/graphql/reference/mutations#createprojectv2view
+CREATE_PROJECT_VIEW_MUTATION: str = """
+mutation CreateProjectView($projectId: ID!, $name: String!, $layout: ProjectV2ViewLayout!) {
+  createProjectV2View(input: {
+    projectId: $projectId
+    name: $name
+    layout: $layout
+  }) {
+    projectV2View { id number name layout filter }
+  }
+}
+""".strip()
+
+# updateProjectV2View sets a view's filter (createProjectV2View takes none).
+# https://docs.github.com/en/graphql/reference/mutations#updateprojectv2view
+UPDATE_PROJECT_VIEW_FILTER_MUTATION: str = """
+mutation UpdateProjectViewFilter($viewId: ID!, $filter: String!) {
+  updateProjectV2View(input: {
+    viewId: $viewId
+    filter: $filter
+  }) {
+    projectV2View { id number name layout filter }
+  }
+}
+""".strip()

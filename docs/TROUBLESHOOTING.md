@@ -213,4 +213,4 @@ The GraphQL client treats malformed `X-RateLimit-Remaining` and `X-RateLimit-Res
 
 ## Docker validation fails
 
-Run syntax and MCP tests from Docker using the current source tree. The long-running `factib_backend` container may contain an older image and does not automatically reflect unbuilt edits. Use the tar-pipe commands in [`SETUP.md`](SETUP.md) so validation covers the files currently in the worktree.
+Run syntax checks and tests inside a freshly built image (`make validate`, or `make test`, which builds with `INSTALL_TEST_DEPS=true` and runs `pytest`). A long-running container started from an older image does not reflect unbuilt edits, so always rebuild before validating.

@@ -135,7 +135,7 @@ in the JSON.
 
 ## Tool Catalog
 
-The server registers **100+ tools**. A category overview:
+The server registers **129 tools** at `MCP_ACCESS_LEVEL=full` (fewer at `read`/`write`). A category overview — the generated, per-tool catalog is [docs/TOOLS.md](docs/TOOLS.md):
 
 | Category | What it covers | Representative tools |
 |----------|----------------|----------------------|
@@ -150,12 +150,14 @@ The server registers **100+ tools**. A category overview:
 | **CI / GitHub Actions** | Read PR checks, runs, jobs and logs; re-run or dispatch workflows | `get_pr_checks`, `list_workflows`, `list_workflow_runs`, `get_workflow_run`, `get_job_logs`, `rerun_workflow_run`, `dispatch_workflow` |
 | **Metrics** | Board and sprint statistics | `get_project_stats`, `get_sprint_summary` |
 | **Diagnostics** | Report effective access level, scope lock, and target | `server_info` |
+| **Board structure** | Plan/apply Status (single-select) options without losing item values; list/create views | `set_field_options`, `list_project_views`, `create_project_view` |
 | **Permanent delete** *(access level `full`, each needs `confirm:true`)* | Irreversible removals | `delete_project_item`, `delete_issue`, `delete_issue_comment`, `delete_label`, `delete_milestone` |
 | **Extended capability suite (~60)** | Reporting, roadmaps, changelogs, backlog ranking, risk registers, retrospectives | `project_health_report`, `project_export_markdown`, `plan_next_sprint`, `prioritize_backlog`, `generate_risk_register`, `build_roadmap_markdown`, `build_sprint_retrospective` |
 
 Tools that could perform broad mutations return a `dry_run` plan by default. The
-capability suite asserts its ~60 unique additions at import time, and CI verifies
-the full registered-tool count stays at 100+.
+capability suite asserts its 60 unique additions at import time, CI verifies the
+registered-tool count stays at 100+, and `tests/test_tool_docs.py` fails when
+docs/TOOLS.md drifts from the registry or any tool lacks a description.
 
 Full input/output reference: [docs/USAGE.md](docs/USAGE.md) ·
 Parameter reference: [docs/PARAMETERS.md](docs/PARAMETERS.md) ·
@@ -320,14 +322,14 @@ through [SECURITY.md](SECURITY.md).
 | Document | Purpose |
 |----------|---------|
 | [docs/SETUP.md](docs/SETUP.md) | Token generation, rotation, and per-IDE integration |
-| [docs/USAGE.md](docs/USAGE.md) | Tool-by-tool input/output examples |
+| [docs/TOOLS.md](docs/TOOLS.md) | Generated catalog: every tool, access tier, capabilities |
+| [docs/USAGE.md](docs/USAGE.md) | Input/output examples per category |
 | [docs/PARAMETERS.md](docs/PARAMETERS.md) | Full parameter and setting reference |
 | [docs/CAPABILITIES.md](docs/CAPABILITIES.md) | Tool → permission matrix for least-privilege tokens |
 | [docs/GRAPHQL_REFERENCE.md](docs/GRAPHQL_REFERENCE.md) | GraphQL queries/mutations used internally |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common errors and fixes |
 | [docs/HARDENING_200.md](docs/HARDENING_200.md) | Runtime hardening register |
 
-The same documents are published to the project **[Wiki](https://github.com/jersonmartinez/mcp-github-projects/wiki)**.
 
 ---
 

@@ -64,7 +64,7 @@ Example (.env file or environment):
 For a quick start with an existing profile, copy one of the bundled
 .env examples:
 
-  cp profiles/factib.env .env
+  cp profiles/example-org.env .env
 
 See docs/SETUP.md for full configuration reference.
 """
@@ -164,6 +164,12 @@ class GitHubProjectSettings(BaseSettings):
     max_items: int = Field(default=200, ge=1, le=1_000)
     page_size: int = Field(default=100, ge=1, le=100)
     max_cli_output_chars: int = Field(default=1_000_000, ge=10_000, le=10_000_000)
+
+    # ── Assignee suggestions (suggest_issue_assignee) ────────────
+    # GitHub logins suggested for issues classified as backend / frontend.
+    # Empty (default) = the tool reports the area but suggests nobody.
+    backend_assignee: str = Field(default="", max_length=39)
+    frontend_assignee: str = Field(default="", max_length=39)
 
     # ── Estimate Validation ──────────────────────────────────────
     estimate_min: float = Field(default=0.25, ge=0)
