@@ -18,8 +18,8 @@
 #   make clean      — Remove built images
 # ─────────────────────────────────────────────────────────────────────────────
 
-IMAGE       := github-project-mcp:latest
-TEST_IMAGE  := github-project-mcp:test
+IMAGE       := mcp-github-projects:latest
+TEST_IMAGE  := mcp-github-projects:test
 COMPOSE     := docker compose -f compose.yaml
 ENV_FILE    := .env
 DOCKER_RUN  := docker run --rm --env-file $(ENV_FILE) $(IMAGE)

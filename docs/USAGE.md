@@ -702,7 +702,7 @@ The server resolves a GitHub token in this order:
 ## Architecture
 
 ```
-MCP client → docker run --rm -i --env-file .env github-project-mcp:latest → python server.py → stdio MCP protocol
+MCP client → docker run --rm -i --env-file .env mcp-github-projects:latest → python server.py → stdio MCP protocol
 ```
 
 The server runs in its own container and talks to the MCP client over
