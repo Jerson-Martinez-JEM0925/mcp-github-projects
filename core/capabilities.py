@@ -28,6 +28,8 @@ class Capability(str, Enum):
     LABELS_WRITE = "labels.write"
     PULL_REQUESTS_READ = "pull_requests.read"
     PULL_REQUESTS_WRITE = "pull_requests.write"
+    ACTIONS_READ = "actions.read"
+    ACTIONS_WRITE = "actions.write"
 
 
 # Shorthand aliases for readability
@@ -43,6 +45,8 @@ LR = Capability.LABELS_READ
 LW = Capability.LABELS_WRITE
 PRR = Capability.PULL_REQUESTS_READ
 PRW = Capability.PULL_REQUESTS_WRITE
+AR = Capability.ACTIONS_READ
+AW = Capability.ACTIONS_WRITE
 
 # ---------------------------------------------------------------------------
 # Tool → Required Capabilities mapping
@@ -152,6 +156,15 @@ TOOL_CAPABILITIES: dict[str, FrozenSet[Capability]] = {
     "sync_closed_items_to_done": frozenset({PR, PW}),
     "link_pull_request": frozenset({PRW, IW}),
     "create_pull_request": frozenset({PRW, IW}),
+
+    # --- GitHub Actions / checks (issue #32) ---
+    "list_workflows": frozenset({AR}),
+    "list_workflow_runs": frozenset({AR}),
+    "get_workflow_run": frozenset({AR}),
+    "get_pr_checks": frozenset({AR, PRR}),
+    "get_job_logs": frozenset({AR}),
+    "rerun_workflow_run": frozenset({AW}),
+    "dispatch_workflow": frozenset({AW}),
 
     # --- Permanent delete (issue #34) — exposed only at MCP_ACCESS_LEVEL=full ---
     "delete_project_item": frozenset({PW}),

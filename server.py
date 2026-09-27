@@ -79,6 +79,7 @@ from tools.pull_requests.pr_issue_lifecycle import (
     sync_closed_items_to_done,
 )
 from tools.meta import capability_suite
+from tools.ci.actions import CI_TOOLS
 from tools.deletes import (
     delete_project_item,
     delete_issue,
@@ -173,6 +174,9 @@ _ALL_TOOLS: list = [
     delete_label,
     delete_milestone,
 ]
+
+# GitHub Actions workflows / runs / checks (issue #32).
+_ALL_TOOLS.extend(CI_TOOLS)
 
 # Extend with the 60-tool capability suite (dynamically-defined functions).
 _ALL_TOOLS.extend(
