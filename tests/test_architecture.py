@@ -248,5 +248,6 @@ def test_log_filter_stamps_records() -> None:
 def test_server_registers_tools_wrapped_in_request_context() -> None:
     import server
 
-    source = inspect.getsource(server._register_tools)
+    source = inspect.getsource(server._build_tool)
     assert "with_request_context(" in source
+    assert "_build_tool(" in inspect.getsource(server._register_tools)

@@ -15,10 +15,12 @@ import logging
 import sys
 
 from fastmcp import FastMCP
+from fastmcp.tools.function_tool import FunctionTool
 
+from core.arguments import accept_flat_or_wrapped
 from core.auth import resolve_token, validate_scopes
 from core.access import AccessLevel, is_exposed
-from core.config import get_settings
+from core.config import get_settings, load_settings_or_exit
 from core.context import RequestContextFilter, with_request_context
 from tools.projects.archive import (
     archive_project_item,
@@ -198,13 +200,31 @@ def _register_tools() -> dict[str, int]:
         tool_name = "complete_issue" if _fn is complete_issue_workflow else _fn.__name__
         if is_exposed(tool_name, level):
             # Each call runs in its own RequestContext (correlation ID in logs
-            # and error envelopes). functools.wraps keeps name + schema intact.
-            mcp.tool()(with_request_context(_fn, tool_name))
+            # and error envelopes), and accepts flat args or a legacy
+            # {"params": {...}} wrapper on every tool (#4).
+            mcp.add_tool(_build_tool(_fn, tool_name))
             registered += 1
         else:
             hidden += 1
     return {"level": level.value, "registered": registered, "hidden": hidden}
 
+
+def _build_tool(fn, tool_name: str) -> FunctionTool:
+    """Wrap ``fn`` in the uniform argument convention and a request scope."""
+    original = FunctionTool.from_function(fn, name=tool_name)
+    normalized, schema = accept_flat_or_wrapped(fn, original.parameters, tool_name)
+    tool = FunctionTool.from_function(
+        with_request_context(normalized, tool_name),
+        name=tool_name,
+        description=original.description,
+    )
+    return tool.model_copy(update={"parameters": schema})
+
+
+if __name__ == "__main__":
+    # Run as `python server.py`: registration below reads settings at import
+    # time, so validate them first and fail fast without a traceback (#3).
+    load_settings_or_exit()
 
 _REGISTRATION = _register_tools()
 

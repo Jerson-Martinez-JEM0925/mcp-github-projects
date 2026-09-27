@@ -9,13 +9,14 @@ This is a thin operator/debug convenience so you do not have to
 hand-write a JSON-RPC client every time you want to smoke-test a tool.
 
 Usage:
-    python scripts/mcp_call.py <TOOL> [JSON_ARGS] [--flat] [--raw]
+    python scripts/mcp_call.py <TOOL> [JSON_ARGS] [--wrap] [--raw]
 
     TOOL        Name of the tool to call (e.g. list_labels).
     JSON_ARGS   Tool arguments as a JSON object. Default: {}.
-    --flat      Send arguments as flat kwargs instead of nesting them
-                under a "params" key. A few tools (e.g. create_project_item)
-                require this; most require the wrapped form (the default).
+    --wrap      Nest the arguments under a legacy "params" key. Every tool
+                accepts flat arguments (the default) and still unwraps the
+                legacy form, so this only exists to exercise that path.
+                `--flat` is accepted as a no-op for older scripts.
     --raw       Print the full JSON-RPC envelope instead of just the
                 tool result payload.
 
@@ -33,7 +34,7 @@ Project context:
 Examples:
     python scripts/mcp_call.py list_labels
     python scripts/mcp_call.py get_issue_detail '{"issue_number": 1}'
-    python scripts/mcp_call.py create_project_item '{"title": "Hi"}' --flat
+    python scripts/mcp_call.py create_project_item '{"title": "Hi"}'
 """
 from __future__ import annotations
 
@@ -135,7 +136,7 @@ def call(tool: str, arguments: dict, *, flat: bool) -> dict | None:
 
 
 def _parse_args(argv: list[str]) -> tuple[str, dict, bool, bool]:
-    flat = "--flat" in argv
+    flat = "--wrap" not in argv  # flat is the convention (#4); --flat is a no-op
     raw = "--raw" in argv
     positional = [a for a in argv if not a.startswith("--")]
     if not positional:

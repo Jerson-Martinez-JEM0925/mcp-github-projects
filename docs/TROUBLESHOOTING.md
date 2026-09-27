@@ -4,6 +4,21 @@ Common issues encountered when using the GitHub Project Management MCP Server, w
 
 ---
 
+## Server exits with code 2 at startup
+
+**Symptom:** the process exits immediately with status `2` and stderr ends with
+`Configuration error: <reason>` (no Python traceback).
+
+**Cause:** a required or invalid setting — usually `GH_PROJECT_ORG_NAME`,
+`GH_PROJECT_REPO_NAME` or `GH_PROJECT_PROJECT_NUMBER` unset, or an unknown
+`MCP_ACCESS_LEVEL`.
+
+**Resolution:** set the variable named in the message (via `.env` or
+`--env-file`) and restart. See [SETUP.md → Target Configuration](SETUP.md#target-configuration).
+Exit code `1` is different: it means token/scope validation failed (see below).
+
+---
+
 ## Invalid Token
 
 **Symptom:** The MCP server exits at startup with the error:

@@ -182,10 +182,12 @@ Response envelopes (`models/responses.py`): `ToolSuccess` is
 `error_type` must be one of: `authentication`, `validation`, `not_found`,
 `rate_limit`, `internal`.
 
-> **Note on tool arguments:** current tools receive their arguments under a
-> `params` object (MCP clients call with `{"params": {...}}`). Keep new tools
-> consistent with this signature. If you improve the argument ergonomics,
-> do it repository-wide behind an issue + PR — do not diverge one tool.
+> **Note on tool arguments:** every tool accepts **flat** arguments
+> (`{"issue_number": 1}`); a legacy `{"params": {...}}` wrapper is still
+> unwrapped on every tool. This is applied centrally at registration by
+> `core/arguments.py` (#4), so a new tool may declare either a single
+> `params: Model` argument or plain keyword arguments — clients see the same
+> flat schema either way. Do not special-case argument shapes in a tool.
 
 ---
 
