@@ -188,6 +188,12 @@ The MCP requires three mandatory fields identifying the GitHub Project:
 > detection cannot run (no `gh`, no auth, or a network error) the server falls
 > back to `organization` and logs a hint to set `GH_PROJECT_OWNER_TYPE=user`.
 
+> **Startup exit codes.** A missing or invalid setting (no target fields, an
+> unknown `MCP_ACCESS_LEVEL`, a malformed number) is reported as a single
+> `Configuration error: …` line on stderr, after the explanatory help block,
+> and the process exits with code **2** — never a Python traceback. Code **1**
+> means authentication/scope validation failed; **0** is a normal shutdown.
+
 #### Board field defaults
 
 When `create_project_item` (default) or `update_project_item_fields` with

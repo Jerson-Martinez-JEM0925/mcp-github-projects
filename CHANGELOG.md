@@ -35,6 +35,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`.env.example`** gains boxed *Access level* and *Scope lock* sections plus a
   commented *Access level examples* block with read-only / write / full presets.
 
+### Fixed
+
+- **Clean fail-fast on misconfiguration** (issue #3). Starting the server with
+  missing project context or an invalid setting no longer ends in a pydantic
+  traceback: both `python server.py` and `python -m` print one
+  `Configuration error: …` line to stderr and exit with code `2` (distinct
+  from `1`, auth failure). Covered by subprocess tests in
+  `tests/test_fail_fast.py`.
+- **Uniform tool-argument convention** (issue #4). Every tool now accepts
+  flat arguments (`{"issue_number": 1}`) and still unwraps a legacy
+  `{"params": {...}}` wrapper, so clients no longer need to know per tool
+  which shape to send. The advertised input schema is the flat one (real
+  fields and `required` list) plus an optional deprecated `params` object.
+  Validation still runs against each tool's own models (types, constraints,
+  model validators unchanged); failures name the field and the expected
+  shape. Applied centrally in `core/arguments.py` at registration.
+  `scripts/mcp_call.py` sends flat args by default (`--wrap` for the legacy
+  form; `--flat` is a no-op).
+
 ### Changed
 
 - **Architecture: HARDENING_200 items 6-8** (issue #35, epic #33), no change to

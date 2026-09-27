@@ -266,3 +266,39 @@ class GitHubProjectSettings(BaseSettings):
 def get_settings() -> GitHubProjectSettings:
     """Return cached GitHubProjectSettings instance."""
     return GitHubProjectSettings()
+
+
+# Exit code for an operator configuration error. Distinct from 1 (auth /
+# runtime failure) and 0 (normal shutdown) so supervisors can tell them apart.
+CONFIG_ERROR_EXIT_CODE = 2
+
+
+def config_error_summary(exc: Exception) -> str:
+    """Render a settings ValidationError as one actionable line (no traceback)."""
+    errors = getattr(exc, "errors", None)
+    if callable(errors):
+        messages = []
+        for err in errors():
+            msg = str(err.get("msg", "")).removeprefix("Value error, ")
+            loc = ".".join(str(part) for part in err.get("loc", ()) if part)
+            messages.append(f"{loc}: {msg}" if loc else msg)
+        if messages:
+            return "; ".join(messages)
+    return str(exc)
+
+
+def load_settings_or_exit() -> GitHubProjectSettings:
+    """Load settings for an entrypoint, exiting cleanly on misconfiguration.
+
+    A missing or invalid setting is an expected operator error, not a crash:
+    print one line to stderr (stdout is the MCP protocol) and exit with
+    CONFIG_ERROR_EXIT_CODE instead of surfacing a Python traceback.
+    Library code keeps using get_settings(), which raises.
+    """
+    from pydantic import ValidationError
+
+    try:
+        return get_settings()
+    except ValidationError as exc:
+        print(f"Configuration error: {config_error_summary(exc)}", file=sys.stderr)
+        raise SystemExit(CONFIG_ERROR_EXIT_CODE) from None

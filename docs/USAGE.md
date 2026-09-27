@@ -706,21 +706,33 @@ context:
 ```bash
 make call TOOL=list_labels
 make call TOOL=get_issue_detail ARGS='{"issue_number": 1}'
-make call TOOL=get_project_stats ARGS='{}' FLAGS='--flat'
+make call TOOL=get_project_stats
 ```
 
 ### Directly
 
 ```bash
-python scripts/mcp_call.py <TOOL> [JSON_ARGS] [--flat] [--raw]
+python scripts/mcp_call.py <TOOL> [JSON_ARGS] [--wrap] [--raw]
 ```
 
 | Argument / flag | Meaning |
 |-----------------|---------|
 | `TOOL` | Tool name (e.g. `list_labels`). |
-| `JSON_ARGS` | Arguments as a JSON object. Default `{}`. |
-| `--flat` | Send flat kwargs instead of the default `params` wrapper. A few tools (e.g. `create_project_item`) require this. |
+| `JSON_ARGS` | Arguments as a JSON object, passed flat. Default `{}`. |
+| `--wrap` | Nest the arguments under the legacy `params` key (only to exercise that path; `--flat` is accepted as a no-op). |
 | `--raw` | Print the full JSON-RPC envelope instead of just the tool result. |
+
+### Argument convention
+
+Every tool takes **flat** arguments, e.g. `{"issue_number": 1, "body": "…"}`.
+For backward compatibility a legacy `{"params": {...}}` wrapper is accepted on
+every tool and unwrapped; if both are sent, the flat value wins. A malformed
+call returns an error naming the missing/invalid field and the expected shape:
+
+```
+Invalid arguments for get_issue_detail: issue_number: Field required.
+Pass arguments flat, e.g. {"issue_number": …}; a legacy {"params": {...}} wrapper is also accepted.
+```
 
 ### Authentication & context
 
