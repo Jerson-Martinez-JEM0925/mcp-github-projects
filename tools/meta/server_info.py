@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from core.access import AccessLevel, level_counts, tools_for_level
 from core.config import get_settings
 from core.error_handling import handle_tool_error
+from core.version import VERSION
 from models.responses import ToolSuccess
 
 logger = logging.getLogger(__name__)
@@ -80,6 +81,7 @@ async def server_info(params: ServerInfoInput) -> dict:
         return ToolSuccess(
             data={
                 "server": "github-project-management",
+                "version": VERSION,
                 "access_level": level.value,
                 "access_level_variable": "MCP_ACCESS_LEVEL",
                 "access_level_meaning": meaning,

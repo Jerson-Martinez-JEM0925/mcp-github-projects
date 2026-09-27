@@ -49,8 +49,13 @@ higher-level capabilities for reporting, planning, roadmaps, and automation.
 ### 1. Build the image
 
 ```bash
-docker build -t mcp-github-projects:latest .
+docker build -t mcp-github-projects:latest .   # or: make build
 ```
+
+Or use a released multi-arch image instead of building:
+`docker pull ghcr.io/jersonmartinez/mcp-github-projects:1.1.0` (also tagged
+`1.1` and `latest`; see [docs/RELEASING.md](docs/RELEASING.md)) and use that
+name wherever the examples say `mcp-github-projects:latest`.
 
 ### 2. Configure your target
 
@@ -329,6 +334,7 @@ through [SECURITY.md](SECURITY.md).
 | [docs/GRAPHQL_REFERENCE.md](docs/GRAPHQL_REFERENCE.md) | GraphQL queries/mutations used internally |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common errors and fixes |
 | [docs/HARDENING_200.md](docs/HARDENING_200.md) | Runtime hardening register |
+| [docs/RELEASING.md](docs/RELEASING.md) | Versioning, the release workflow and the GHCR image |
 
 
 ---

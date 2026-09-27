@@ -23,6 +23,7 @@ from core.auth import resolve_token, validate_scopes
 from core.access import AccessLevel, is_exposed
 from core.config import get_settings, load_settings_or_exit
 from core.context import RequestContextFilter, with_request_context
+from core.version import VERSION
 from tools.projects.archive import (
     archive_project_item,
     move_to_done,
@@ -100,7 +101,7 @@ from tools.project_provisioning import (
 
 # ── FastMCP Server Instance ──────────────────────────────────────────────────
 
-mcp = FastMCP("github-project-management")
+mcp = FastMCP("github-project-management", version=VERSION)
 
 # ── Register Tools ───────────────────────────────────────────────────────────
 
