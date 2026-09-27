@@ -80,7 +80,8 @@ TOOL_CAPABILITIES: dict[str, FrozenSet[Capability]] = {
     "bulk_close_issues": frozenset({IW}),
     "bulk_update_items": frozenset({IW, PW}),
     "complete_issue": frozenset({IW, PW, CW}),
-    "auto_triage_issue": frozenset({IW, PW}),
+    # auto_triage_issue only suggests labels (dry run): read-only (#37).
+    "auto_triage_issue": frozenset({IR, LR}),
 
     # --- Comments ---
     "comment_issue": frozenset({CW}),
@@ -97,13 +98,18 @@ TOOL_CAPABILITIES: dict[str, FrozenSet[Capability]] = {
     "move_to_done": frozenset({PW}),
     "move_to_trash": frozenset({PW}),
     "archive_project_item": frozenset({PW}),
-    "project_sync_issue_metadata": frozenset({PW, IW}),
-    "project_set_default_status": frozenset({PW}),
-    "project_set_default_priority": frozenset({PW}),
-    "project_bulk_status_by_filter": frozenset({PW}),
-    "project_bulk_priority_by_filter": frozenset({PW}),
-    "project_bulk_due_date_by_filter": frozenset({PW}),
-    "project_import_markdown": frozenset({PW, IW}),
+
+    # --- Plan-only (dry run) board/issue helpers ---
+    # These return a plan with "dry_run": true and never mutate anything, so
+    # they only need read capabilities and are exposed at MCP_ACCESS_LEVEL=read
+    # (docs audit, issue #37). Apply a plan with the real write tools.
+    "project_sync_issue_metadata": frozenset({PR, IR}),
+    "project_set_default_status": frozenset({PR}),
+    "project_set_default_priority": frozenset({PR}),
+    "project_bulk_status_by_filter": frozenset({PR}),
+    "project_bulk_priority_by_filter": frozenset({PR}),
+    "project_bulk_due_date_by_filter": frozenset({PR}),
+    "project_import_markdown": frozenset(),
 
     # --- Project Reports (Read-Only) ---
     "get_project_stats": frozenset({PR, IR}),
@@ -183,6 +189,11 @@ TOOL_CAPABILITIES: dict[str, FrozenSet[Capability]] = {
     "create_project_field": frozenset({PW}),
     "link_repository": frozenset({PW}),
     "list_projects": frozenset({PR}),
+
+    # --- Board structure (issue #26) ---
+    "set_field_options": frozenset({PW}),
+    "list_project_views": frozenset({PR}),
+    "create_project_view": frozenset({PW}),
 
     # --- Workflow Orchestration ---
     "daily_standup": frozenset({PR, IR, CW}),

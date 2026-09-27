@@ -1,4 +1,4 @@
-"""Allow running the MCP server as `python -m app.mcp.github_project`."""
+"""Allow running the MCP server as `python .` from the repository root."""
 
 from core.config import load_settings_or_exit
 

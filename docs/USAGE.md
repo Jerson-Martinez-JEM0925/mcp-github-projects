@@ -1,18 +1,19 @@
 # MCP GitHub Project Management — Usage Guide
 
-Complete reference for all 105 tools exposed by the GitHub Project Management MCP server.
+Usage guide for the GitHub Project Management MCP server, with examples per category. The authoritative, generated list of every tool (126 at `MCP_ACCESS_LEVEL=full`) with its access tier and capabilities is [TOOLS.md](TOOLS.md).
 
 ## Project Configuration
 
 - **Organization**: (your configured org)
 - **Repository**: (your configured repo)
 - **Project number**: 1
-- **Status values**: 📢 Proposal, 📌 To Do, 🛠 In Progress, ⏸ Pending, ✅ Done, 🗑️ Trash
-- **Priority values**: Urgent, Important, Not urgent, Not important
+- **Status / Priority values**: read from your board at runtime (`discover_ids`); nothing is hardcoded. The examples below use a board whose Status options are 📢 Proposal, 📌 To Do, 🛠 In Progress, ⏸ Pending, ✅ Done, 🗑️ Trash and whose Priority options are Urgent, Important, Not urgent, Not important. A leading emoji is optional when naming an option (`"Done"` matches `✅ Done`).
 
 ---
 
 ## Tool Categories
+
+The main categories below; the extended capability suite (60 tools), repository/project provisioning and the permanent-delete tools are listed in [TOOLS.md](TOOLS.md).
 
 | Category | Tools | Count |
 |----------|-------|-------|
@@ -43,7 +44,7 @@ Output: { project_id, owner, project_number, fields: { Status: { id, options }, 
 Lists items from the project board with optional filters.
 
 ```
-Input:  { "status": "📌 To Do", "priority": "Urgent", "assignee": "jersonmartinez" }
+Input:  { "status": "📌 To Do", "priority": "Urgent", "assignee": "octocat" }
 Output: { items: [{ node_id, title, issue_number, status, priority, milestone, due_date, assignees, labels }], count }
 ```
 
@@ -59,7 +60,7 @@ lands with empty custom fields.
 ```
 Input:  { "title": "New feature", "body": "Description", "status": "In Progress",
           "priority": "High", "area": "server", "work_type": "Feature",
-          "estimate": 5, "assignees": ["jersonmartinez"], "labels": ["🚀 Feature"],
+          "estimate": 5, "assignees": ["octocat"], "labels": ["🚀 Feature"],
           "milestone": "Sprint 7", "due_date": "2026-07-20" }
 Output: { issue_number, issue_url, item_node_id }
 ```
@@ -177,7 +178,7 @@ Input:  { "item_id": "PVTI_...", "status": "🛠 In Progress" }
 Output: { item_id, status, message }
 ```
 
-**Valid statuses**: 📢 Proposal, 📌 To Do, 🛠 In Progress, ⏸ Pending, ✅ Done, 🗑️ Trash
+**Valid statuses**: any Status option on your board (see `discover_ids`). Exact names match first; a leading emoji may be omitted (`"In Progress"` matches `🛠 In Progress`) as long as the match is unique.
 
 ### bulk_update_items
 
@@ -224,7 +225,7 @@ Output: { issue_number, comment_url }
 Edits issue properties: title, body, milestone, labels, assignees.
 
 ```
-Input:  { "issue_number": 258, "milestone": "Sprint 3 - Jul 21-27", "add_labels": ["🔒 Security"], "add_assignees": ["ffactib"] }
+Input:  { "issue_number": 258, "milestone": "Sprint 3", "add_labels": ["🔒 Security"], "add_assignees": ["hubot"] }
 Output: { issue_number, updated_fields }
 ```
 
@@ -262,7 +263,7 @@ Output: { results: [{ issue, status }], total, closed }
 Assigns multiple issues to users and/or milestone.
 
 ```
-Input:  { "issue_numbers": [258, 259, 260], "assignees": ["ffactib"], "milestone": "Sprint 2 - Jul 14-20" }
+Input:  { "issue_numbers": [258, 259, 260], "assignees": ["hubot"], "milestone": "Sprint 2" }
 Output: { results, total, updated }
 ```
 
@@ -315,7 +316,7 @@ Output: { number, title, html_url }
 Closes an open milestone by title.
 
 ```
-Input:  { "title": "Sprint 1 - Jul 7-13" }
+Input:  { "title": "Sprint 1" }
 Output: { number, title, state: "closed" }
 ```
 
@@ -368,7 +369,7 @@ Output: { total_open_issues, total_closed_issues, overall_progress_pct, sprints:
 Detailed summary of a specific sprint: issues, progress, assignee distribution, days remaining.
 
 ```
-Input:  { "milestone_title": "Sprint 2 - Jul 14-20" }
+Input:  { "milestone_title": "Sprint 2" }
 Output: { milestone, due_on, days_remaining, total_issues, open, closed, progress_pct, assignee_distribution, open_issues }
 ```
 
@@ -377,7 +378,7 @@ Output: { milestone, due_on, days_remaining, total_issues, open, closed, progres
 Auto-distributes unassigned sprint issues between team members.
 
 ```
-Input:  { "milestone_title": "Sprint 2 - Jul 14-20", "team_members": ["jersonmartinez", "ffactib"], "strategy": "backend_frontend" }
+Input:  { "milestone_title": "Sprint 2", "team_members": ["octocat", "hubot"], "strategy": "backend_frontend" }
 Output: { milestone, strategy, total_issues, already_assigned, unassigned, distribution: { "user": { already_assigned, newly_planned, total, new_issues } }, next_step }
 ```
 
@@ -391,7 +392,7 @@ Output: { milestone, strategy, total_issues, already_assigned, unassigned, distr
 Generates formatted markdown release notes from closed issues in a milestone.
 
 ```
-Input:  { "milestone_title": "Sprint 1 - Jul 7-13", "version": "v2.1.0", "include_contributors": true, "group_by_label": true }
+Input:  { "milestone_title": "Sprint 1", "version": "v2.1.0", "include_contributors": true, "group_by_label": true }
 Output: { version, milestone, issues_count, contributors, categories_used, markdown }
 ```
 
@@ -458,7 +459,7 @@ Output: { issue_number, status: "completed", comment, message }
 Generates a daily standup report: what was done recently, what's in progress, what's blocked.
 
 ```
-Input:  { "username": "jersonmartinez" }  // or {} for all team
+Input:  { "username": "octocat" }  // or {} for all team
 Output: { date, done_recently: [{ number, title }], done_count, in_progress: [...], in_progress_count, blocked: [...], blocked_count }
 ```
 
@@ -467,7 +468,7 @@ Output: { date, done_recently: [{ number, title }], done_count, in_progress: [..
 Sprint retrospective data: velocity, completion %, per-person breakdown, pending items.
 
 ```
-Input:  { "milestone_title": "Sprint 1 - Jul 7-13" }
+Input:  { "milestone_title": "Sprint 1" }
 Output: { milestone, total_issues, completed, pending, progress_pct, velocity, per_person: { "user": { completed, pending } }, pending_issues }
 ```
 
@@ -494,7 +495,7 @@ Output: { overdue_count, issues: [{ number, title, milestone, days_overdue, assi
 Reassigns an issue from one person to another with a context comment.
 
 ```
-Input:  { "issue_number": 267, "from_user": "jersonmartinez", "to_user": "ffactib", "context": "Backend done, needs frontend UI now." }
+Input:  { "issue_number": 267, "from_user": "octocat", "to_user": "hubot", "context": "Backend done, needs frontend UI now." }
 Output: { issue_number, from, to, message }
 ```
 
@@ -520,7 +521,7 @@ Parameters:
 - `priority` (str, optional) — Priority option name (must match the board's Priority options).
 
 ```
-Input:  { "title": "🏔️ [Epic] OCR System", "body": "Implement ticket scanning...", "sub_tasks": ["Backend OCR endpoint", "Frontend camera UI"], "link_existing": [42, 43], "milestone": "Sprint 4 - Jul 28 - Ago 3", "assignee": "jersonmartinez", "labels": ["📱 Mobile"], "priority": "High" }
+Input:  { "title": "🏔️ [Epic] OCR System", "body": "Implement ticket scanning...", "sub_tasks": ["Backend OCR endpoint", "Frontend camera UI"], "link_existing": [42, 43], "milestone": "Sprint 4", "assignee": "octocat", "labels": ["📱 Mobile"], "priority": "High" }
 Output: { parent_issue, parent_url, sub_issues: [{ number, title, created }], sub_issues_count, linked_existing: [{ number, linked }], linked_existing_count, status_applied, message }
 ```
 
@@ -529,7 +530,7 @@ Output: { parent_issue, parent_url, sub_issues: [{ number, title, created }], su
 Closes a sprint: closes the milestone, moves pending issues to the next sprint, generates summary.
 
 ```
-Input:  { "milestone_title": "Sprint 1 - Jul 7-13", "next_milestone": "Sprint 2 - Jul 14-20" }
+Input:  { "milestone_title": "Sprint 1", "next_milestone": "Sprint 2" }
 Output: { milestone, total, completed, pending_moved, moved_to, completion_pct, moved_issues, message }
 ```
 
@@ -540,6 +541,45 @@ Reports issues that are blocked or pending, with dependency information.
 ```
 Input:  {}
 Output: { blocked_count, issues: [{ number, title, assignees, milestone, dependency: 123 }] }
+```
+
+---
+
+## 🧱 Board structure (Status columns and views)
+
+Change a single-select field's options — typically **Status**, which drives the
+board columns — and manage views. Always plan first: `set_field_options` is a
+dry run unless you pass `dry_run: false`.
+
+```
+# 1. Plan: show before → after, nothing changes
+Input:  { "options": [{"name": "📌 To Do"}, {"name": "🛠 In Progress"}, {"name": "👀 In Review", "color": "PURPLE"}, {"name": "✅ Done"}] }
+Output: { before, after, kept, added: ["👀 In Review"], removed: [], dry_run: true }
+
+# 2. Apply the same list
+Input:  { ...same options..., "dry_run": false }
+
+# Rename an option in place (items keep it)
+Input:  { "options": [{"name": "🚧 Doing", "match": "🛠 In Progress"}], "dry_run": false }
+
+# Drop options that are not listed (items holding them lose the value)
+Input:  { "options": [...], "remove_missing": true, "dry_run": false, "confirm": true }
+```
+
+- Existing options match by exact name, then by name without the leading
+  emoji, and are sent back with their id — so items keep their value, even
+  across a rename or recolour.
+- Options you do not list are **kept** (appended at the end) unless
+  `remove_missing: true`; removing needs `confirm: true`.
+- The discovery cache is refreshed after a change, so `move_to_status` sees
+  the new options immediately.
+
+`list_project_views` returns each view's number, name, layout and filter;
+`create_project_view` adds one:
+
+```
+Input:  { "name": "Bugs", "layout": "TABLE", "filter": "is:open label:bug" }
+Output: { id, number, name, layout: "TABLE", filter }
 ```
 
 ---
@@ -662,20 +702,28 @@ The server resolves a GitHub token in this order:
 ## Architecture
 
 ```
-Kiro IDE → docker compose exec backend → python -m app.mcp.github_project.server → stdio MCP protocol
+MCP client → docker run --rm -i --env-file .env github-project-mcp:latest → python server.py → stdio MCP protocol
 ```
 
-The server runs inside the backend Docker container, communicating with Kiro via stdin/stdout using the MCP stdio transport protocol.
+The server runs in its own container and talks to the MCP client over
+stdin/stdout (MCP stdio transport); logs go to stderr. See
+[architecture/PROJECT_STRUCTURE.md](architecture/PROJECT_STRUCTURE.md) for the
+layering (tools → services → clients) and the ServiceFactory.
 
 ### File Structure
 
 ```
 mcp-github-projects/
 ├── server.py                    ← Entry point (registers every tool)
-├── __main__.py                  ← `python -m` shim
+├── __main__.py                  ← `python .` shim (clean fail-fast on bad config)
 ├── core/                        ← Cross-cutting infrastructure
+│   ├── access.py                ← MCP_ACCESS_LEVEL tiers + scope lock
+│   ├── arguments.py             ← Flat-args / legacy `params` convention
 │   ├── auth.py                  ← Token resolution + scope validation
 │   ├── config.py                ← Pydantic settings (env prefix: GH_PROJECT_)
+│   ├── context.py               ← RequestContext (correlation IDs)
+│   ├── factory.py               ← ServiceFactory (single construction point)
+│   ├── protocols.py             ← GraphQLExecutor / GHCLIRunner interfaces
 │   ├── error_handling.py        ← Unified error response builder
 │   ├── exceptions.py            ← Custom exception types
 │   ├── hardening.py             ← Input parsing, redaction, atomic writes
@@ -701,11 +749,13 @@ mcp-github-projects/
 │   ├── fields/                  ← set_estimate, labels, milestones
 │   ├── planning/                ← sprint_planning, release notes, epics, standup, review
 │   ├── bulk/                    ← bulk_close, search_issues
+│   ├── ci/                      ← workflows, runs, PR checks, job logs, rerun/dispatch
 │   └── meta/                    ← stats, sprint_summary, link/create_pr, bulk_assign,
 │                                  capability_suite (60 tools)
 └── docs/
     ├── architecture/PROJECT_STRUCTURE.md ← Layout & conventions (authoritative)
     ├── USAGE.md                 ← This file
+    ├── TOOLS.md                 ← Generated catalog of every tool (drift-guarded)
     ├── SETUP.md                 ← Installation & configuration
     ├── PARAMETERS.md            ← Environment variables reference
     ├── GRAPHQL_REFERENCE.md     ← GraphQL queries used

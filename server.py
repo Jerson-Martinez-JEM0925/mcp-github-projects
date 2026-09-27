@@ -4,8 +4,9 @@ Creates a FastMCP server instance, registers all tools, validates
 authentication on startup, and runs with stdio transport for MCP
 communication.
 
-Usage:
-    python -m app.mcp.github_project.server
+Usage (the container's default command):
+    python server.py
+    python .          # same, via __main__.py
 """
 
 from __future__ import annotations
@@ -80,6 +81,7 @@ from tools.pull_requests.pr_issue_lifecycle import (
 )
 from tools.meta import capability_suite
 from tools.ci.actions import CI_TOOLS
+from tools.projects.board_structure import BOARD_STRUCTURE_TOOLS
 from tools.deletes import (
     delete_project_item,
     delete_issue,
@@ -177,6 +179,9 @@ _ALL_TOOLS: list = [
 
 # GitHub Actions workflows / runs / checks (issue #32).
 _ALL_TOOLS.extend(CI_TOOLS)
+
+# Board structure: single-select options and views (issue #26).
+_ALL_TOOLS.extend(BOARD_STRUCTURE_TOOLS)
 
 # Extend with the 60-tool capability suite (dynamically-defined functions).
 _ALL_TOOLS.extend(

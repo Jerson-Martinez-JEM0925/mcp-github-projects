@@ -131,209 +131,36 @@ This is the parity concept with `mcp-monday-projects`' `MONDAY_WORKSPACE_ID`.
 
 ---
 
-## Full Tool × Capability Matrix
+## Tool × Capability Matrix
 
-### Discovery & Configuration
+The per-tool list (access tier and required capabilities for all tools) is
+generated from `core/capabilities.py` into [TOOLS.md](TOOLS.md), and CI fails
+when it drifts (`tests/test_tool_docs.py`). It is not repeated here, so it
+cannot go stale. Two classification rules worth knowing:
 
-| Tool | Capabilities | Module |
-|------|-------------|--------|
-| `discover_ids` | `projects.read` | discover.py |
+- A tool is **write** when it needs any `*.write` capability, **read**
+  otherwise; permanent deletes are a separate **delete** tier (`full` only).
+- Plan-only helpers that return `"dry_run": true` and never mutate
+  (`project_set_default_*`, `project_bulk_*_by_filter`,
+  `project_sync_issue_metadata`, `project_import_markdown`,
+  `auto_triage_issue`) are **read** tools, so they stay available at
+  `MCP_ACCESS_LEVEL=read`.
 
-### Issue Read Operations
+### Board structure (Status columns and views)
 
-| Tool | Capabilities | Module |
-|------|-------------|--------|
-| `get_issue_detail` | `issues.read`, `comments.read` | advanced_operations.py |
-| `list_sub_issues` | `issues.read` | advanced_operations.py |
-| `search_issues` | `issues.read` | bulk_operations.py |
-| `list_project_items` | `projects.read`, `issues.read` | list_items.py |
-| `summarize_issue` | `issues.read` | capability_suite.py |
-| `detect_issue_duplicates` | `issues.read` | capability_suite.py |
-| `find_stale_issues` | `projects.read`, `issues.read` | capability_suite.py |
-| `find_unassigned_issues` | `projects.read`, `issues.read` | capability_suite.py |
-| `find_missing_issue_metadata` | `projects.read`, `issues.read` | capability_suite.py |
-| `list_issue_comments` | `issues.read`, `comments.read` | capability_suite.py |
-| `search_issue_comments` | `issues.read`, `comments.read` | capability_suite.py |
+The public Project V2 API now supports editing single-select options
+(`updateProjectV2Field.singleSelectOptions`) and creating/updating views
+(`createProjectV2View`, `updateProjectV2View`) — verified by schema
+introspection on 2026-09-27. The server exposes them as:
 
-### Issue Write Operations
+| Tool | Access | Safety |
+|------|--------|--------|
+| `set_field_options` | write | `dry_run: true` by default; existing options are sent back with their id (items keep their value, even on rename); unlisted options are **kept** unless `remove_missing: true`, which additionally requires `confirm: true` because items holding a removed option lose it. |
+| `list_project_views` | read | — |
+| `create_project_view` | write | Creates a board/table/roadmap view, optionally with a filter. Views have no delete tool here. |
 
-| Tool | Capabilities | Module |
-|------|-------------|--------|
-| `create_project_item` | `issues.write`, `projects.write` | create_item.py |
-| `edit_issue` | `issues.write` | edit_issue.py |
-| `close_issue` | `issues.write` | close.py |
-| `reopen_issue` | `issues.write` | advanced_operations.py |
-| `add_sub_issue` | `issues.write` | add_sub_issue.py |
-| `remove_sub_issue` | `issues.write` | advanced_operations.py |
-| `bulk_close_issues` | `issues.write` | bulk_operations.py |
-| `bulk_update_items` | `issues.write`, `projects.write` | advanced_operations.py |
-| `complete_issue` | `issues.write`, `projects.write`, `comments.write` | workflows.py |
-| `auto_triage_issue` | `issues.write`, `projects.write` | capability_suite.py |
-
-### Comment Operations
-
-| Tool | Capabilities | Module |
-|------|-------------|--------|
-| `comment_issue` | `comments.write` | comment_issue.py |
-| `comment_issue_progress` | `comments.write` | capability_suite.py |
-| `comment_issue_plan` | `comments.write` | capability_suite.py |
-| `comment_issue_blocker` | `comments.write` | capability_suite.py |
-| `comment_issue_resolution` | `comments.write` | capability_suite.py |
-| `edit_issue_comment` | `comments.write` | capability_suite.py |
-
-### Project Board Operations
-
-| Tool | Capabilities | Module |
-|------|-------------|--------|
-| `update_project_item_fields` | `projects.write` | update_fields.py |
-| `move_to_status` | `projects.write` | advanced_operations.py |
-| `move_to_done` | `projects.write` | archive.py |
-| `move_to_trash` | `projects.write` | archive.py |
-| `archive_project_item` | `projects.write` | archive.py |
-| `project_sync_issue_metadata` | `projects.write`, `issues.write` | capability_suite.py |
-| `project_set_default_status` | `projects.write` | capability_suite.py |
-| `project_set_default_priority` | `projects.write` | capability_suite.py |
-| `project_bulk_status_by_filter` | `projects.write` | capability_suite.py |
-| `project_bulk_priority_by_filter` | `projects.write` | capability_suite.py |
-| `project_bulk_due_date_by_filter` | `projects.write` | capability_suite.py |
-| `project_import_markdown` | `projects.write`, `issues.write` | capability_suite.py |
-
-### Project Report / Analytics (Read-Only)
-
-| Tool | Capabilities | Module |
-|------|-------------|--------|
-| `get_project_stats` | `projects.read`, `issues.read` | nice_to_have.py |
-| `get_sprint_summary` | `projects.read`, `planning.read` | nice_to_have.py |
-| `project_health_report` | `projects.read`, `issues.read` | capability_suite.py |
-| `project_status_distribution` | `projects.read` | capability_suite.py |
-| `project_priority_distribution` | `projects.read` | capability_suite.py |
-| `project_assignee_load` | `projects.read`, `issues.read` | capability_suite.py |
-| `project_due_date_risk` | `projects.read` | capability_suite.py |
-| `project_cycle_time` | `projects.read` | capability_suite.py |
-| `project_orphan_items` | `projects.read` | capability_suite.py |
-| `project_missing_fields` | `projects.read` | capability_suite.py |
-| `project_field_options_report` | `projects.read` | capability_suite.py |
-| `project_validate_board` | `projects.read` | capability_suite.py |
-| `project_export_markdown` | `projects.read` | capability_suite.py |
-
-### Planning & Sprint Operations
-
-| Tool | Capabilities | Module |
-|------|-------------|--------|
-| `sprint_planning` | `planning.read`, `projects.read`, `issues.read` | planning.py |
-| `generate_release_notes` | `planning.read`, `issues.read` | planning.py |
-| `plan_next_sprint` | `planning.read`, `projects.read` | capability_suite.py |
-| `prioritize_backlog` | `projects.read`, `issues.read` | capability_suite.py |
-| `generate_daily_plan` | `planning.read`, `projects.read` | capability_suite.py |
-| `generate_weekly_plan` | `planning.read`, `projects.read` | capability_suite.py |
-| `generate_risk_register` | `planning.read`, `projects.read` | capability_suite.py |
-| `generate_dependency_report` | `projects.read`, `issues.read` | capability_suite.py |
-| `generate_release_checklist` | `planning.read`, `projects.read` | capability_suite.py |
-| `generate_changelog_from_issues` | `planning.read`, `issues.read` | capability_suite.py |
-| `generate_project_brief` | `projects.read`, `issues.read` | capability_suite.py |
-| `generate_stakeholder_update` | `planning.read`, `projects.read` | capability_suite.py |
-| `detect_scope_creep` | `planning.read`, `projects.read` | capability_suite.py |
-| `detect_blocked_work` | `projects.read`, `issues.read` | capability_suite.py |
-| `recommend_wip_moves` | `projects.read`, `issues.read` | capability_suite.py |
-| `recommend_sprint_assignment` | `planning.read`, `projects.read` | capability_suite.py |
-| `close_sprint` | `planning.write`, `projects.write`, `issues.write` | workflows.py |
-
-### Label & Milestone Operations
-
-| Tool | Capabilities | Module |
-|------|-------------|--------|
-| `list_labels` | `labels.read` | labels.py |
-| `create_label` | `labels.write` | labels.py |
-| `list_milestones` | `planning.read` | milestones.py |
-| `create_milestone` | `planning.write` | milestones.py |
-| `close_milestone` | `planning.write` | milestones.py |
-| `set_estimate` | `projects.write` | estimate.py |
-| `suggest_issue_labels` | `issues.read`, `labels.read` | capability_suite.py |
-
-### PR / Issue Lifecycle
-
-| Tool | Capabilities | Module |
-|------|-------------|--------|
-| `verify_acceptance_criteria` | `issues.read`, `pull_requests.read` | pr_issue_lifecycle.py |
-| `get_pr_linked_issues` | `pull_requests.read`, `issues.read` | pr_issue_lifecycle.py |
-| `validate_issue_closure_readiness` | `issues.read`, `pull_requests.read`, `comments.read` | pr_issue_lifecycle.py |
-| `close_issue_on_pr_merge` | `issues.write`, `pull_requests.read`, `comments.write` | pr_issue_lifecycle.py |
-| `link_pull_request` | `pull_requests.write`, `issues.write` | nice_to_have.py |
-| `create_pull_request` | `pull_requests.write`, `issues.write` | nice_to_have.py |
-
-### GitHub Actions & Checks
-
-| Tool | Capabilities | Module |
-|------|-------------|--------|
-| `list_workflows` | `actions.read` | ci/actions.py |
-| `list_workflow_runs` | `actions.read` | ci/actions.py |
-| `get_workflow_run` | `actions.read` | ci/actions.py |
-| `get_pr_checks` | `actions.read`, `pull_requests.read` | ci/actions.py |
-| `get_job_logs` | `actions.read` | ci/actions.py |
-| `rerun_workflow_run` | `actions.write` | ci/actions.py |
-| `dispatch_workflow` | `actions.write` | ci/actions.py |
-
-### Workflow Orchestration
-
-| Tool | Capabilities | Module |
-|------|-------------|--------|
-| `daily_standup` | `projects.read`, `issues.read`, `comments.write` | workflows.py |
-| `sprint_review` | `projects.read`, `planning.read`, `issues.read` | workflows.py |
-| `triage_new_issues` | `issues.read`, `issues.write`, `projects.write` | workflows.py |
-| `escalate_overdue` | `projects.read`, `issues.read`, `comments.write` | workflows.py |
-| `handoff_issue` | `issues.write`, `comments.write`, `projects.write` | workflows.py |
-| `create_epic` | `issues.write`, `projects.write`, `comments.write` | workflows.py |
-| `blocked_report` | `projects.read`, `issues.read` | workflows.py |
-| `bulk_assign` | `issues.write` | nice_to_have.py |
-
-### Diagnostics
-
-| Tool | Capabilities | Module |
-|------|-------------|--------|
-| `server_info` | _(none — reads local settings only)_ | server_info.py |
-
-### Project Provisioning
-
-| Tool | Capabilities | Module |
-|------|-------------|--------|
-| `create_project` | `projects.write` | project_provisioning.py |
-| `update_project` | `projects.write` | project_provisioning.py |
-| `create_project_field` | `projects.write` | project_provisioning.py |
-| `link_repository` | `projects.write` | project_provisioning.py |
-| `list_projects` | `projects.read` | project_provisioning.py |
-
-### Permanent Delete (access level `full` only — each requires `confirm:true`)
-
-These are **irreversible**. Registered ONLY when `MCP_ACCESS_LEVEL=full`.
-
-| Tool | Capabilities | API | Reversible alternative |
-|------|-------------|-----|------------------------|
-| `delete_project_item` | `projects.write` | GraphQL `deleteProjectV2Item` | `archive_project_item` / `move_to_trash` |
-| `delete_issue` | `issues.write` | GraphQL `deleteIssue` | `close_issue` |
-| `delete_issue_comment` | `comments.write` | REST `DELETE issues/comments/{id}` | edit via `edit_issue_comment` |
-| `delete_label` | `labels.write` | REST `gh label delete` | — (leave unused) |
-| `delete_milestone` | `planning.write` | REST `DELETE milestones/{n}` | `close_milestone` |
-
-### Text Processing (Local / No API)
-
-| Tool | Capabilities | Module |
-|------|-------------|--------|
-| `validate_issue_markdown` | _(none — local text processing)_ | capability_suite.py |
-| `format_issue_markdown` | _(none — local text processing)_ | capability_suite.py |
-| `add_issue_acceptance_criteria` | _(none — local text processing)_ | capability_suite.py |
-| `normalize_issue_title` | _(none — local text processing)_ | capability_suite.py |
-| `suggest_issue_assignee` | `issues.read` | capability_suite.py |
-| `build_issue_template` | _(none — local text processing)_ | capability_suite.py |
-| `build_closure_comment` | _(none — local text processing)_ | capability_suite.py |
-| `build_dependency_comment` | _(none — local text processing)_ | capability_suite.py |
-| `build_issue_bundle` | `issues.read` | capability_suite.py |
-| `build_status_update_comment` | _(none — local text processing)_ | capability_suite.py |
-| `build_sprint_retrospective` | `planning.read`, `projects.read` | capability_suite.py |
-| `build_roadmap_markdown` | `planning.read`, `projects.read` | capability_suite.py |
-| `build_issue_creation_bundle` | _(none — local text processing)_ | capability_suite.py |
-| `build_issue_review_checklist` | `issues.read` | capability_suite.py |
-| `build_comment_digest` | `issues.read`, `comments.read` | capability_suite.py |
-| `build_automation_decision` | _(none — local text processing)_ | capability_suite.py |
+Native workflows (built-in automations) are still not writable through the
+public API beyond `deleteProjectV2Workflow`, so they are not exposed.
 
 ---
 

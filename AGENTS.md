@@ -2,10 +2,10 @@
 
 Vendor-neutral guide for AI coding agents (and humans) working in this
 repository. This file is the **single source of truth** for how to build,
-test, extend, and contribute to the project. Client-specific pointer files
-(`.cursor/rules/project.mdc`, `.github/copilot-instructions.md`,
-`.kiro/steering/mcp-development-workflow.md`) defer to this document — when
-they disagree, AGENTS.md wins. This repository intentionally does not create or
+test, extend, and contribute to the project. If an MCP client needs its own
+pointer file (for example `.cursor/rules/*.mdc` or
+`.github/copilot-instructions.md`), it must only point here — when they
+disagree, AGENTS.md wins. This repository intentionally does not create or
 maintain `CLAUDE.md`.
 
 ---

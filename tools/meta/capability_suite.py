@@ -268,13 +268,16 @@ async def suggest_issue_assignee(params: IssueTextInput) -> dict:
     text = params.text.casefold()
     backend_words = ("api", "backend", "database", "docker", "security", "migrat")
     frontend_words = ("ui", "frontend", "react", "next", "css", "naveg")
+    settings = get_settings()
+    # Logins come from configuration, never from code: the area heuristic is
+    # generic, who owns each area is per repository (docs audit, #37).
     if any(word in text for word in backend_words):
-        suggestion = "jersonmartinez"
+        area, suggestion = "backend", settings.backend_assignee or None
     elif any(word in text for word in frontend_words):
-        suggestion = "ffactib"
+        area, suggestion = "frontend", settings.frontend_assignee or None
     else:
-        suggestion = None
-    return _success({"issue_number": params.issue_number, "suggested_assignee": suggestion, "confidence": "heuristic"})
+        area, suggestion = None, None
+    return _success({"issue_number": params.issue_number, "area": area, "suggested_assignee": suggestion, "confidence": "heuristic"})
 
 
 @_guard("Normalize issue title failed")
@@ -702,3 +705,75 @@ CAPABILITY_TOOL_NAMES = [
     "validate_issue_markdown", "format_issue_markdown", "add_issue_acceptance_criteria", "summarize_issue", "suggest_issue_labels", "suggest_issue_assignee", "normalize_issue_title", "detect_issue_duplicates", "find_stale_issues", "find_unassigned_issues", "find_missing_issue_metadata", "comment_issue_progress", "comment_issue_plan", "comment_issue_blocker", "comment_issue_resolution", "list_issue_comments", "search_issue_comments", "edit_issue_comment", "build_issue_template", "build_closure_comment", "build_dependency_comment", "project_health_report", "project_status_distribution", "project_priority_distribution", "project_assignee_load", "project_due_date_risk", "project_cycle_time", "project_orphan_items", "project_missing_fields", "project_field_options_report", "project_validate_board", "project_sync_issue_metadata", "project_set_default_status", "project_set_default_priority", "project_bulk_status_by_filter", "project_bulk_priority_by_filter", "project_bulk_due_date_by_filter", "project_export_markdown", "project_import_markdown", "plan_next_sprint", "prioritize_backlog", "generate_daily_plan", "generate_weekly_plan", "generate_risk_register", "generate_dependency_report", "generate_release_checklist", "generate_changelog_from_issues", "generate_project_brief", "generate_stakeholder_update", "detect_scope_creep", "detect_blocked_work", "recommend_wip_moves", "recommend_sprint_assignment", "auto_triage_issue", "build_status_update_comment", "build_sprint_retrospective", "build_roadmap_markdown", "build_issue_creation_bundle", "build_issue_review_checklist", "build_comment_digest",
 ]
 assert len(CAPABILITY_TOOL_NAMES) == 60
+
+# One-line descriptions. These functions are defined compactly without
+# docstrings, so without this table MCP clients received an EMPTY description
+# for all 60 tools (docs audit, issue #37). tests/test_tool_docs.py asserts
+# every registered tool advertises a non-empty description.
+# Note: the Markdown these tools generate uses Spanish headings (e.g.
+# "## Plan de implementación") — see docs/TOOLS.md.
+_DESCRIPTIONS: dict[str, str] = {
+    "validate_issue_markdown": "Check issue Markdown for the template sections (Contexto, Problema actual, Solución propuesta, Criterio de aceptación, Valor para el usuario) and report the missing ones (local, no API).",
+    "format_issue_markdown": "Normalize issue Markdown: strip trailing spaces and collapse repeated blank lines (local, no API).",
+    "add_issue_acceptance_criteria": "Append a deduplicated acceptance-criteria checklist to issue Markdown (local, no API).",
+    "summarize_issue": "Return an issue's key fields and its body capped at 4,000 characters.",
+    "suggest_issue_labels": "Suggest labels from keywords in the text (fixed vocabulary: Security, BackEnd, FrontEnd, Infrastructure, Testing, UX/Polish, Fix, Documentation, Performance); changes nothing.",
+    "suggest_issue_assignee": "Classify the text as backend/frontend by keywords and suggest the assignee configured for that area (GH_PROJECT_BACKEND_ASSIGNEE / GH_PROJECT_FRONTEND_ASSIGNEE); changes nothing.",
+    "normalize_issue_title": "Collapse whitespace, capitalize the first letter and check the 1-256 character limit (local, no API).",
+    "detect_issue_duplicates": "Search issues in any state matching the text and list them as possible duplicates of the given issue.",
+    "find_stale_issues": "List open issues that have no assignee or no update timestamp.",
+    "find_unassigned_issues": "List open issues with no assignee.",
+    "find_missing_issue_metadata": "List open issues missing a milestone, assignee or labels.",
+    "comment_issue_progress": "Post a progress comment (\"## Avance\") on an issue.",
+    "comment_issue_plan": "Post an implementation-plan comment (\"## Plan de implementación\") on an issue.",
+    "comment_issue_blocker": "Post a blocker comment (\"## Bloqueo\") on an issue.",
+    "comment_issue_resolution": "Post a resolution comment (\"## Resolución\") on an issue.",
+    "list_issue_comments": "List an issue's comments.",
+    "search_issue_comments": "Search issues matching a query and return their comments that contain it.",
+    "edit_issue_comment": "Replace the body of an existing issue comment by comment id.",
+    "build_issue_template": "Build issue Markdown (Contexto, Problema actual, Solución propuesta, Criterio de aceptación, …) from its parts (local, no API).",
+    "build_closure_comment": "Build a closure comment with a summary, changed files and verification steps (local, no API).",
+    "build_dependency_comment": "Build a \"Bloqueado por #N\" dependency comment (local, no API).",
+    "project_health_report": "Board health: item count, items missing a title and the percentage that have one.",
+    "project_status_distribution": "Count board items per Status value.",
+    "project_priority_distribution": "Count board items per Priority value.",
+    "project_assignee_load": "Count board items per assignee.",
+    "project_due_date_risk": "List board items past their due date that are not Done.",
+    "project_cycle_time": "Average days from creation to close over recently closed issues.",
+    "project_orphan_items": "List board items with neither linked content nor a title.",
+    "project_missing_fields": "List board items missing Status or Priority.",
+    "project_field_options_report": "Report the Status and Priority values observed on the board.",
+    "project_validate_board": "Validate the board: valid when at least 90% of items have a title (see project_health_report).",
+    "project_sync_issue_metadata": "Plan (dry run) which open issues lack the given assignee or label; changes nothing.",
+    "project_set_default_status": "Plan (dry run) a default Status; returns the plan only and changes nothing.",
+    "project_set_default_priority": "Plan (dry run) a default Priority; returns the plan only and changes nothing.",
+    "project_bulk_status_by_filter": "Plan (dry run) a bulk Status change for items matching a filter; changes nothing.",
+    "project_bulk_priority_by_filter": "Plan (dry run) a bulk Priority change for items matching a filter; changes nothing.",
+    "project_bulk_due_date_by_filter": "Plan (dry run) a bulk due-date change for items matching a filter; changes nothing.",
+    "project_export_markdown": "Export board items as a Markdown table (ID, Título, Estado, Prioridad).",
+    "project_import_markdown": "Validate a Markdown table for import and count its rows (dry run); creates nothing.",
+    "plan_next_sprint": "List open issues, optionally only those in a milestone, as a next-sprint checklist.",
+    "prioritize_backlog": "Rank open issues: Security label first, then Fix, then by issue number.",
+    "generate_daily_plan": "Top five issues of the prioritized backlog as a daily plan.",
+    "generate_weekly_plan": "Wrap the next-sprint checklist as a weekly plan.",
+    "generate_risk_register": "Risk register of open issues labelled Security, blocked or Fix.",
+    "generate_dependency_report": "List open issues whose body says \"blocked by\", \"depende de\" or \"bloqueado\".",
+    "generate_release_checklist": "Build a fixed release checklist in Markdown (local, no API).",
+    "generate_changelog_from_issues": "Changelog from recently closed issues, grouped by the Feature / Fix labels.",
+    "generate_project_brief": "Short project brief built from the board health report.",
+    "generate_stakeholder_update": "Stakeholder update with counts of reviewed, completed and pending issues.",
+    "detect_scope_creep": "List open issues whose body mentions \"scope\" or \"fuera de alcance\".",
+    "detect_blocked_work": "List blocked issues (same rule as generate_dependency_report).",
+    "recommend_wip_moves": "For open issues that mention \"in progress\", recommend finishing, blocking or moving them back.",
+    "recommend_sprint_assignment": "List open issues lacking an assignee or milestone, to assign before the sprint.",
+    "auto_triage_issue": "Suggest triage labels for an issue from its title and body (dry run; nothing is applied).",
+    "build_status_update_comment": "Build a status-update comment (same format as build_closure_comment; local, no API).",
+    "build_sprint_retrospective": "Build a sprint retrospective Markdown template (local, no API).",
+    "build_roadmap_markdown": "Roadmap in Markdown: open issues listed with their milestone.",
+    "build_issue_creation_bundle": "Build a title + body bundle from the issue template (dry run; no issue is created).",
+    "build_issue_review_checklist": "Review checklist for an issue: description, acceptance criteria, labels, assignee, milestone.",
+    "build_comment_digest": "Comment count and latest comment for several issues.",
+}
+assert set(_DESCRIPTIONS) == set(CAPABILITY_TOOL_NAMES), set(_DESCRIPTIONS) ^ set(CAPABILITY_TOOL_NAMES)
+for _name, _description in _DESCRIPTIONS.items():
+    globals()[_name].__doc__ = _description

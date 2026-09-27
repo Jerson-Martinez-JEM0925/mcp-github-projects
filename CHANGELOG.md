@@ -9,6 +9,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Documentation drift guard + invoke-every-tool test** (issue #36).
+  `docs/TOOLS.md` is generated from the live registry by
+  `scripts/gen_tool_docs.py` (name, access tier, capabilities, summary);
+  `tests/test_tool_docs.py` fails when it is stale, when a tool is missing
+  from it or has no description, and invokes **every** registered tool through
+  a real FastMCP client with schema-derived arguments against injected fakes,
+  requiring a structured `{"ok": ...}` envelope from each.
+- **Board structure tools** (issue #26): `set_field_options` (plan by default;
+  preserves option ids so items keep their values, keeps unlisted options
+  unless `remove_missing` + `confirm`), `list_project_views`,
+  `create_project_view`. The public API gained `updateProjectV2Field`
+  single-select options and `createProjectV2View` (verified by introspection),
+  so the earlier "Status columns cannot be provisioned" limit no longer holds.
+- `GH_PROJECT_BACKEND_ASSIGNEE` / `GH_PROJECT_FRONTEND_ASSIGNEE` settings for
+  `suggest_issue_assignee`.
+
+### Fixed
+
+- **Status option matching** — `move_to_done`, `move_to_trash` and
+  `move_to_status` now resolve a bare name against an emoji-prefixed option
+  (`Done` → `✅ Done`) when the match is unique; before, boards with emoji
+  options rejected `move_to_done` outright.
+- **60 capability-suite tools advertised an empty description** to MCP
+  clients; each now has an accurate one-line summary (written against the
+  implementation, e.g. `find_stale_issues` = no assignee or no update
+  timestamp).
+- **`suggest_issue_assignee` hardcoded two personal logins**; it now reports
+  the area and suggests only a configured login.
+- **Plan-only helpers were classified as write** (`project_set_default_*`,
+  `project_bulk_*_by_filter`, `project_sync_issue_metadata`,
+  `project_import_markdown`, `auto_triage_issue`): they never mutate, so they
+  are read tools and available at `MCP_ACCESS_LEVEL=read`.
+
+### Changed
+
+- **Docs audit** (issue #37): removed leftovers from the project this server
+  was extracted from (a `profiles/factib.env` hint that pointed to a missing
+  file, a `factib_backend` container, an `app.mcp.github_project` module path,
+  an IDE-specific architecture diagram, personal logins and dated sprint names
+  in examples); USAGE now defers the full list to TOOLS.md and documents that
+  Status/Priority values are read from the board; CAPABILITIES replaces its
+  hand-maintained (and already drifted) per-tool matrix with the generated
+  one; GRAPHQL_REFERENCE lists the new operations; README drops a link to a
+  wiki that does not exist; AGENTS no longer names pointer files that are not
+  in the repo; the unused `scripts/check_sync.sh` (compared against an
+  embedded copy in another repository) is removed.
+
+### Added
+
 - **GitHub Actions / checks tools** (issue #32, epic #5) in `tools/ci/actions.py`:
   read — `list_workflows`, `list_workflow_runs`, `get_workflow_run` (jobs +
   failed steps), `get_pr_checks` (check runs + commit statuses on the PR head,

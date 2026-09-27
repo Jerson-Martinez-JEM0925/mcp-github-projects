@@ -29,7 +29,7 @@ class MoveToStatusInput(BaseModel):
     """Input schema for the move_to_status tool."""
 
     item_id: str = Field(description="Project item node ID (PVTI_...)")
-    status: str = Field(description="Target status: '📢 Proposal', '📌 To Do', '🛠 In Progress', '⏸ Pending', '✅ Done', '🗑️ Trash'")
+    status: str = Field(description="Name of a Status option on the board, e.g. 'In Progress'. Exact names match first; a leading emoji is optional ('Done' matches '✅ Done'). Run discover_ids to list the options.")
 
 
 class BulkUpdateItemsInput(BaseModel):
