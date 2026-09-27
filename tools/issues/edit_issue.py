@@ -140,9 +140,11 @@ async def edit_issue(
         logger.error("CLI error in edit_issue: %s", exc)
         stderr = exc.stderr.strip()
         if "not found" in stderr.lower():
+            # Keep gh's own reason: "not found" can mean the issue, a label,
+            # a milestone or a user, and only stderr says which one.
             return build_error_response(
                 error_type="not_found",
-                message=f"Issue #{issue_number} or referenced resource not found.",
+                message=f"Issue #{issue_number} or a referenced resource was not found: {stderr}",
                 suggestion="Verify issue number, milestone title, label names, and usernames are correct.",
             )
         return build_error_response(
