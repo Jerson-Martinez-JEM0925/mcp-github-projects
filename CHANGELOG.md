@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **GitHub Actions / checks tools** (issue #32, epic #5) in `tools/ci/actions.py`:
+  read — `list_workflows`, `list_workflow_runs`, `get_workflow_run` (jobs +
+  failed steps), `get_pr_checks` (check runs + commit statuses on the PR head,
+  `overall` = passed/failed/pending/**none**), `get_job_logs` (bounded tail,
+  ANSI escapes stripped, secrets redacted); write — `rerun_workflow_run`
+  (failed jobs or whole run) and `dispatch_workflow` (`workflow_dispatch` with
+  ≤ 10 string inputs). New capabilities `actions.read` / `actions.write`
+  classify them for `MCP_ACCESS_LEVEL`; `owner`/`repo` overrides honour
+  `GH_PROJECT_SCOPE_LOCK`. Lets the MCP verify a PR's CI without `gh pr
+  checks`. Tool count: 119 → 126 at `full`.
+
 - **Access levels (`MCP_ACCESS_LEVEL`)** — `read` | `write` | `full`, default
   `write` (issue #34, epic #33). Governs which tools the server registers:
   `read` exposes only read-only tools, `write` keeps today's create/update/

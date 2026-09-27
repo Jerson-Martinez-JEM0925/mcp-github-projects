@@ -62,6 +62,8 @@ This is the parity concept with `mcp-monday-projects`' `MONDAY_WORKSPACE_ID`.
 | `labels.write` | Create and modify repository labels |
 | `pull_requests.read` | Read PR details, linked issues, merge status |
 | `pull_requests.write` | Link PRs, close issues on merge |
+| `actions.read` | List workflows and runs, read check runs, commit statuses and job logs |
+| `actions.write` | Re-run workflow runs and dispatch `workflow_dispatch` workflows |
 | `repositories.write` | Create repositories for a user or organization |
 
 ---
@@ -84,6 +86,8 @@ This is the parity concept with `mcp-monday-projects`' `MONDAY_WORKSPACE_ID`.
 | `labels.write` | `repo` |
 | `pull_requests.read` | `repo` |
 | `pull_requests.write` | `repo` |
+| `actions.read` | `repo` |
+| `actions.write` | `repo`, `workflow` |
 
 **Minimum classic PAT for full MCP access:** `repo`, `project`, `read:org`
 
@@ -103,6 +107,8 @@ This is the parity concept with `mcp-monday-projects`' `MONDAY_WORKSPACE_ID`.
 | `labels.write` | Issues: Read and write | — |
 | `pull_requests.read` | Pull requests: Read | — |
 | `pull_requests.write` | Pull requests: Read and write | — |
+| `actions.read` | Actions: Read, Checks: Read, Commit statuses: Read, Pull requests: Read | — |
+| `actions.write` | Actions: Read and write | — |
 
 ---
 
@@ -254,6 +260,18 @@ This is the parity concept with `mcp-monday-projects`' `MONDAY_WORKSPACE_ID`.
 | `close_issue_on_pr_merge` | `issues.write`, `pull_requests.read`, `comments.write` | pr_issue_lifecycle.py |
 | `link_pull_request` | `pull_requests.write`, `issues.write` | nice_to_have.py |
 | `create_pull_request` | `pull_requests.write`, `issues.write` | nice_to_have.py |
+
+### GitHub Actions & Checks
+
+| Tool | Capabilities | Module |
+|------|-------------|--------|
+| `list_workflows` | `actions.read` | ci/actions.py |
+| `list_workflow_runs` | `actions.read` | ci/actions.py |
+| `get_workflow_run` | `actions.read` | ci/actions.py |
+| `get_pr_checks` | `actions.read`, `pull_requests.read` | ci/actions.py |
+| `get_job_logs` | `actions.read` | ci/actions.py |
+| `rerun_workflow_run` | `actions.write` | ci/actions.py |
+| `dispatch_workflow` | `actions.write` | ci/actions.py |
 
 ### Workflow Orchestration
 

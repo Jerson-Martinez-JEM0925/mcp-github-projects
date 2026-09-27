@@ -22,6 +22,7 @@ Complete reference for all 105 tools exposed by the GitHub Project Management MC
 | Milestones | create_milestone, close_milestone, list_milestones | 3 |
 | Labels | create_label, list_labels | 2 |
 | Stats & Planning | get_project_stats, get_sprint_summary, sprint_planning, generate_release_notes, link_pull_request, create_pull_request | 6 |
+| CI / Actions | list_workflows, list_workflow_runs, get_workflow_run, get_pr_checks, get_job_logs, rerun_workflow_run, dispatch_workflow | 7 |
 | Workflows | complete_issue, daily_standup, sprint_review, triage_new_issues, escalate_overdue, handoff_issue, create_epic, close_sprint, blocked_report | 9 |
 
 ---
@@ -539,6 +540,32 @@ Reports issues that are blocked or pending, with dependency information.
 ```
 Input:  {}
 Output: { blocked_count, issues: [{ number, title, assignees, milestone, dependency: 123 }] }
+```
+
+---
+
+## ✅ CI / GitHub Actions
+
+Verify a PR's checks and recover a workflow run without leaving the MCP. All
+tools default to the configured repository; `owner`/`repo` overrides are
+refused when `GH_PROJECT_SCOPE_LOCK=true`. Token needs Actions/Checks read
+(and Actions write + classic `workflow` scope for the two write tools).
+
+| Tool | Access | Purpose |
+|------|--------|---------|
+| `get_pr_checks` | read | Every check run + commit status on the PR head: `overall` = `passed` / `failed` / `pending` / `none`. **`none` (no checks) is a blocker, not green.** |
+| `list_workflows` | read | Workflows with id, file name and state (`limit` ≤ 100). |
+| `list_workflow_runs` | read | Recent runs, filtered by `workflow`, `branch`, `event`, `status`, `head_sha` (`limit` ≤ 100). |
+| `get_workflow_run` | read | One run plus its jobs and the names of the failed steps. |
+| `get_job_logs` | read | Last `tail_lines` (≤ 2000) of a job log, terminal escapes stripped, secrets redacted. |
+| `rerun_workflow_run` | write | Re-run failed jobs (default) or the whole run (`failed_only: false`). |
+| `dispatch_workflow` | write | Trigger a `workflow_dispatch` run on `ref`, with up to 10 string `inputs`. |
+
+```bash
+make call TOOL=get_pr_checks ARGS='{"pr_number": 40}'
+make call TOOL=list_workflow_runs ARGS='{"branch": "feat/x", "status": "failure", "limit": 5}'
+make call TOOL=get_workflow_run ARGS='{"run_id": 123456789}'
+make call TOOL=get_job_logs ARGS='{"job_id": 987654321, "tail_lines": 100}'
 ```
 
 ---
