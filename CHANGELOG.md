@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`sync_closed_items_to_done` was not idempotent on boards whose columns carry
+  no emoji** (issue #44). Terminal columns (`keep_statuses` + `done_status`)
+  were compared by exact name, so with the default `✅ Done` / `🗑️ Trash` a
+  bare `Done` column made every finished card a candidate on every run. They
+  are now compared emoji- and case-insensitively, the same rule `update_field`
+  uses to resolve an option.
+
 ## [1.1.0] - 2026-09-27
 
 ### Added
