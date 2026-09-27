@@ -137,10 +137,43 @@ def test_custom_done_status_is_idempotent():
     print("✅ test_custom_done_status_is_idempotent")
 
 
+def test_bare_done_column_is_terminal():
+    """A board whose columns carry no emoji ("Done", "Trash") must be idempotent.
+
+    Regression: terminal columns were compared by exact name, so on a board
+    with a bare "Done" column every finished card was re-proposed for
+    "✅ Done" on each run. Terminal matching now ignores emoji and case.
+    """
+    items = [
+        _item("PVTI_A", 201, "Done", "MERGED"),
+        _item("PVTI_B", 202, "trash", "CLOSED", content_type="Issue"),
+        _item("PVTI_C", 203, "In Progress", "CLOSED", content_type="Issue"),
+    ]
+    fake_project = MagicMock()
+    fake_project.list_all_items = AsyncMock(return_value=items)
+    fake_project.update_field = AsyncMock(return_value=None)
+    fake_discovery = MagicMock()
+    fake_discovery.get_cached_or_discover = AsyncMock(return_value=MagicMock())
+
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="tok")), \
+         patch("services.project_service.ProjectService", return_value=fake_project), \
+         patch("services.discovery_service.DiscoveryService", return_value=fake_discovery), \
+         patch("clients.graphql_client.GraphQLClient", return_value=MagicMock()), \
+         patch("clients.cache_manager.CacheManager", return_value=MagicMock()), \
+         patch("clients.gh_cli_client.GHCLIClient", return_value=MagicMock()):
+        result = asyncio.run(
+            sync_closed_items_to_done(SyncClosedItemsToDoneInput(dry_run=True))
+        )
+    numbers = [m["number"] for m in result["data"]["would_move"]]
+    assert numbers == [203], result["data"]
+    print("✅ test_bare_done_column_is_terminal")
+
+
 if __name__ == "__main__":
     test_moves_only_closed_or_merged_non_terminal_items()
     test_dry_run_does_not_mutate()
     test_scopes_to_single_number()
     test_terminal_and_open_items_are_skipped()
     test_custom_done_status_is_idempotent()
+    test_bare_done_column_is_terminal()
     print("All sync_closed_items_to_done tests passed")

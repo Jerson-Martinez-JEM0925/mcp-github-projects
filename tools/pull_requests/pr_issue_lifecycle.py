@@ -21,6 +21,7 @@ from core.config import get_settings
 from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
 from core.factory import get_service_factory
+from services.project_service import bare_option_name
 
 logger = logging.getLogger(__name__)
 
@@ -614,7 +615,8 @@ class SyncClosedItemsToDoneInput(BaseModel):
     )
     done_status: str = Field(
         default="✅ Done",
-        description="Exact name of the destination Status column (default '✅ Done').",
+        description="Name of the destination Status column (default '✅ Done'). "
+        "A leading emoji and case are optional ('Done' matches '✅ Done').",
     )
     keep_statuses: list[str] = Field(
         default_factory=lambda: ["✅ Done", "🗑️ Trash"],
@@ -662,7 +664,13 @@ async def sync_closed_items_to_done(params: SyncClosedItemsToDoneInput) -> dict:
         items = await project_service.list_all_items(metadata=metadata)
         # The destination is ALWAYS terminal, so a custom done_status stays
         # idempotent even if the caller did not list it in keep_statuses.
-        terminal_statuses = set(params.keep_statuses) | {params.done_status}
+        # Compared emoji- and case-insensitively (same rule update_field uses
+        # to resolve an option), so a board whose column is a bare "Done"
+        # does not see every finished card as a candidate for "✅ Done".
+        terminal_statuses = {
+            bare_option_name(name)
+            for name in (*params.keep_statuses, params.done_status)
+        }
 
         moved: list[dict] = []
         would_move: list[dict] = []
@@ -677,7 +685,7 @@ async def sync_closed_items_to_done(params: SyncClosedItemsToDoneInput) -> dict:
             ):
                 continue
             # Already terminal — never a candidate (idempotent).
-            if item.status in terminal_statuses:
+            if item.status and bare_option_name(item.status) in terminal_statuses:
                 continue
             # Only reconcile items whose linked content is closed/merged.
             if (item.content_state or "").upper() not in _CLOSED_STATES:
