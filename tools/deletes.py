@@ -31,15 +31,12 @@ import logging
 
 from pydantic import BaseModel, Field
 
-from clients.gh_cli_client import CLIError, GHCLIClient
-from clients.cache_manager import CacheManager
-from clients.graphql_client import GraphQLClient
-from core.auth import resolve_token
+from clients.gh_cli_client import CLIError
 from core.config import get_settings
 from core.error_handling import build_error_response, handle_tool_error
 from graphql.mutations import DELETE_ISSUE_MUTATION, DELETE_PROJECT_ITEM_MUTATION
 from models.responses import ToolSuccess
-from services.discovery_service import DiscoveryService
+from core.factory import get_service_factory
 
 logger = logging.getLogger(__name__)
 
@@ -92,12 +89,8 @@ async def delete_project_item(params: DeleteProjectItemInput) -> dict:
                 "archive_project_item (archives, restorable) or move_to_trash",
             )
 
-        token = await resolve_token()
-        graphql_client = GraphQLClient(token=token)
-        discovery_service = DiscoveryService(
-            graphql_client=graphql_client,
-            cache_manager=CacheManager(),
-        )
+        graphql_client = await get_service_factory().graphql()
+        discovery_service = await get_service_factory().discovery_service(graphql_client)
         metadata = await discovery_service.get_cached_or_discover()
 
         result = await graphql_client.execute_with_retry(
@@ -149,10 +142,10 @@ async def delete_issue(params: DeleteIssueInput) -> dict:
                 "close_issue (closes, reopenable)",
             )
 
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh_client = GHCLIClient()
+        gh_client = get_service_factory().gh()
 
         # Resolve the issue's node ID (REST exposes node_id directly).
         try:
@@ -179,8 +172,7 @@ async def delete_issue(params: DeleteIssueInput) -> dict:
                 suggestion="Verify the issue number is correct.",
             )
 
-        token = await resolve_token()
-        graphql_client = GraphQLClient(token=token)
+        graphql_client = await get_service_factory().graphql()
         result = await graphql_client.execute_with_retry(
             DELETE_ISSUE_MUTATION,
             {"issueId": node_id},
@@ -235,10 +227,10 @@ async def delete_issue_comment(params: DeleteIssueCommentInput) -> dict:
                 "editing the comment via edit_issue_comment instead of deleting it",
             )
 
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh_client = GHCLIClient()
+        gh_client = get_service_factory().gh()
 
         try:
             await gh_client.run([
@@ -296,10 +288,10 @@ async def delete_label(params: DeleteLabelInput) -> dict:
                 "leaving the label in place (it can simply go unused)",
             )
 
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh_client = GHCLIClient()
+        gh_client = get_service_factory().gh()
 
         try:
             await gh_client.run([
@@ -353,10 +345,10 @@ async def delete_milestone(params: DeleteMilestoneInput) -> dict:
                 "close_milestone (keeps the milestone and its history)",
             )
 
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh_client = GHCLIClient()
+        gh_client = get_service_factory().gh()
 
         # Resolve the milestone number by title (matches close_milestone).
         list_result = await gh_client.run([

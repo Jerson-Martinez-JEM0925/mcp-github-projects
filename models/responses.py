@@ -36,3 +36,10 @@ class ToolError(BaseModel):
         default=None,
         description="GitHub API request ID when available for support escalation",
     )
+    correlation_id: str | None = Field(
+        default=None,
+        description=(
+            "Local ID of this tool call; the same ID tags every stderr log line "
+            "of the call, so it can be quoted when reporting a failure"
+        ),
+    )

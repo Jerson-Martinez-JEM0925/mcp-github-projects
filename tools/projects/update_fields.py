@@ -27,10 +27,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from core.auth import resolve_token
-from clients.cache_manager import CacheManager
-from clients.gh_cli_client import CLIError, GHCLIClient
-from clients.graphql_client import GraphQLClient
+from clients.gh_cli_client import CLIError
+from core.protocols import GraphQLExecutor
 from core.config import get_settings
 from core.error_handling import build_error_response, handle_tool_error
 from core.exceptions import (
@@ -41,10 +39,10 @@ from core.exceptions import (
 from graphql.queries import GET_ITEM_STATUS_QUERY
 from models.metadata import ProjectMetadata
 from models.responses import ToolSuccess
-from services.discovery_service import DiscoveryService
 from services.field_defaults import compute_defaults, unset_board_fields
 from services.issue_service import IssueService
 from services.project_service import ProjectService
+from core.factory import get_service_factory
 
 logger = logging.getLogger(__name__)
 
@@ -155,20 +153,12 @@ async def update_project_item_fields(params: UpdateFieldsInput) -> dict:
     """
     try:
         # Resolve token and initialize services.
-        token = await resolve_token()
-        graphql_client = GraphQLClient(token=token)
-        cache_manager = CacheManager()
-        gh_client = GHCLIClient()
+        graphql_client = await get_service_factory().graphql()
+        gh_client = get_service_factory().gh()
 
-        discovery_service = DiscoveryService(
-            graphql_client=graphql_client,
-            cache_manager=cache_manager,
-        )
-        project_service = ProjectService(
-            graphql_client=graphql_client,
-            gh_client=gh_client,
-        )
-        issue_service = IssueService(gh_client=gh_client)
+        discovery_service = await get_service_factory().discovery_service(graphql_client)
+        project_service = await get_service_factory().project_service(graphql_client, gh_client)
+        issue_service = get_service_factory().issue_service(gh_client)
 
         # 1. Discover project metadata for field resolution.
         metadata = await discovery_service.get_cached_or_discover()
@@ -340,7 +330,7 @@ async def update_project_item_fields(params: UpdateFieldsInput) -> dict:
 
 
 async def _resolve_item(
-    graphql_client: GraphQLClient,
+    graphql_client: GraphQLExecutor,
     item_id: str,
 ) -> dict | None:
     """Resolve a project item by node ID to verify existence and get issue_number.

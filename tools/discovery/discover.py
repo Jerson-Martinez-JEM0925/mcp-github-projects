@@ -9,12 +9,9 @@ from __future__ import annotations
 
 import logging
 
-from core.auth import resolve_token
-from clients.cache_manager import CacheManager
-from clients.graphql_client import GraphQLClient
 from core.error_handling import handle_tool_error
 from models.responses import ToolSuccess
-from services.discovery_service import DiscoveryService
+from core.factory import get_service_factory
 
 logger = logging.getLogger(__name__)
 
@@ -35,13 +32,8 @@ async def discover_ids(force: bool = False) -> dict:
         or ToolError (ok=False, error_type, message, suggestion) on failure.
     """
     try:
-        token = await resolve_token()
-        graphql_client = GraphQLClient(token=token)
-        cache_manager = CacheManager()
-        discovery_service = DiscoveryService(
-            graphql_client=graphql_client,
-            cache_manager=cache_manager,
-        )
+        graphql_client = await get_service_factory().graphql()
+        discovery_service = await get_service_factory().discovery_service(graphql_client)
 
         if force:
             metadata = await discovery_service.discover(force=True)

@@ -22,6 +22,10 @@ mcp-github-projects/
 ├── core/                    # Cross-cutting infrastructure (no GitHub domain logic)
 │   ├── config.py            # Settings model + get_settings()
 │   ├── auth.py              # Token resolution + scope validation
+│   ├── access.py            # MCP_ACCESS_LEVEL gating + GH_PROJECT_SCOPE_LOCK
+│   ├── factory.py           # ServiceFactory: the ONLY place clients/services are built
+│   ├── protocols.py         # GraphQLExecutor / GHCLIRunner transport interfaces
+│   ├── context.py           # Per-call RequestContext (correlation ID, log filter)
 │   ├── error_handling.py    # build_error_response() / handle_tool_error()
 │   ├── exceptions.py        # Typed exception hierarchy
 │   ├── hardening.py         # Input parsing, redaction, atomic writes
@@ -143,6 +147,7 @@ a registered tool has no capability mapping.
    ```python
    from pydantic import BaseModel
    from core.error_handling import build_error_response, handle_tool_error
+   from core.factory import get_service_factory
    from models.responses import ToolSuccess
 
    class DoThingInput(BaseModel):
@@ -151,6 +156,8 @@ a registered tool has no capability mapping.
    async def do_thing(params: DoThingInput) -> dict:
        """One-line summary shown to the MCP client."""
        try:
+           factory = get_service_factory()
+           project = await factory.project_service()  # never ProjectService(...)
            ...
            return ToolSuccess(data={...}).model_dump()
        except Exception as exc:  # narrow in real code
@@ -158,15 +165,55 @@ a registered tool has no capability mapping.
    ```
    Follow the existing arg convention of the sibling tools in that module
    (`params`-wrapped vs flat — see `docs/PARAMETERS.md`).
-3. **Register it in `server.py`**: import the function and add `mcp.tool()(do_thing)`.
+3. **Register it in `server.py`**: import the function and append it to `_ALL_TOOLS`.
+   Registration wraps it in a `RequestContext` and only exposes it when its
+   access class (step 4) is allowed by `MCP_ACCESS_LEVEL`.
    (Capability-suite tools register automatically via the list — recipe 5.)
 4. **Map its capability** in `core/capabilities.py::TOOL_CAPABILITIES` using the
-   minimal required set. Tools with no API calls map to `frozenset()`.
+   minimal required set. Tools with no API calls map to `frozenset()`. The
+   capability also decides its access class (read / write / delete) in
+   `core/access.py`.
 5. **Document it** in `docs/CAPABILITIES.md` and `docs/USAGE.md` **in the same PR**
    (documentation is a pre-PR gate, never a follow-up).
-6. **Add a test** in `tests/test_<area>.py`.
+6. **Add a test** in `tests/test_<area>.py`. Drive the tool with fakes through
+   `use_service_factory(...)` (see *Clients, services and tests* below) instead of
+   patching module attributes.
 7. **Verify the count moved as intended**: `python scripts/count_tools.py` — a *new*
    tool raises the count; a pure refactor keeps it identical.
+
+### Clients, services and tests
+
+`core/factory.py::ServiceFactory` is the single construction point for
+`GraphQLClient`, `GHCLIClient`, `CacheManager` and the services. Tools call
+`get_service_factory()` and ask it for what they need; a test in
+`tests/test_architecture.py` fails if a tool constructs any of them inline.
+
+Services and helpers type their transports with the protocols in
+`core/protocols.py` (`GraphQLExecutor`, `GHCLIRunner`), so any object with the
+same methods works. A test therefore needs no `unittest.mock.patch`:
+
+```python
+from core.factory import use_service_factory
+
+class FakeGH:
+    async def run(self, args): ...
+    async def api_graphql(self, query, variables): ...
+
+with use_service_factory(gh_client=FakeGH()):
+    result = await close_issue(CloseIssueInput(issue_number=12))
+```
+
+Injected transports skip token resolution. The default factory builds fresh
+objects per call, so production behaviour is the same as inline construction.
+
+### Request context
+
+Every registered tool runs inside `core.context.request_scope`. The context
+carries a 12-hex-character `correlation_id`, the tool name and the start time.
+It reaches two places: every stderr log line (`[<correlation_id> <tool>]`
+prefix, via `RequestContextFilter`) and every error envelope
+(`ToolError.correlation_id`). A user can quote the ID from an error and find the
+matching log lines. It is unrelated to GitHub's own `request_id`.
 
 ### Adding to the capability suite (60-tool batch)
 
@@ -203,10 +250,12 @@ a registered tool has no capability mapping.
 
 ## 6. Invariants (do not break)
 
-- **Tool count is 106.** A structural change must not add or drop a registered tool.
-  `scripts/count_tools.py` and `test_contracts.py::TestToolRegistration` enforce ≥100
-  and no duplicates.
-- **Client-facing tool names are byte-identical** across a refactor.
+- **Tool count per access level is 65 (`read`) / 114 (`write`) / 119 (`full`).**
+  A structural change must not add or drop a registered tool.
+  `scripts/count_tools.py` (at `full`) and `test_contracts.py::TestToolRegistration`
+  enforce ≥100 and no duplicates.
+- **Client-facing tool names and input schemas are byte-identical** across a refactor.
+- **Clients and services are built only through `core.factory`.**
 - **`python server.py` and the Docker image build** must keep working — do not move
   `server.py`, `__main__.py`, `requirements.txt`, `Dockerfile`, `Makefile`, or the
   license/readme out of the repo root.

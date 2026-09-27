@@ -57,7 +57,7 @@ def _run(params):
     fake_discovery = MagicMock()
     fake_discovery.get_cached_or_discover = AsyncMock(return_value=MagicMock())
 
-    with patch("tools.pull_requests.pr_issue_lifecycle.resolve_token", new=AsyncMock(return_value="tok")), \
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="tok")), \
          patch("services.project_service.ProjectService", return_value=fake_project), \
          patch("services.discovery_service.DiscoveryService", return_value=fake_discovery), \
          patch("clients.graphql_client.GraphQLClient", return_value=MagicMock()), \
@@ -123,7 +123,7 @@ def test_custom_done_status_is_idempotent():
     fake_discovery = MagicMock()
     fake_discovery.get_cached_or_discover = AsyncMock(return_value=MagicMock())
 
-    with patch("tools.pull_requests.pr_issue_lifecycle.resolve_token", new=AsyncMock(return_value="tok")), \
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="tok")), \
          patch("services.project_service.ProjectService", return_value=fake_project), \
          patch("services.discovery_service.DiscoveryService", return_value=fake_discovery), \
          patch("clients.graphql_client.GraphQLClient", return_value=MagicMock()), \

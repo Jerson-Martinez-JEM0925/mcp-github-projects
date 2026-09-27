@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 
-from clients.graphql_client import GraphQLClient
+from core.protocols import GraphQLExecutor
 from core.config import get_settings
 from core.exceptions import ValidationError
 from graphql.mutations import (
@@ -26,7 +26,7 @@ class FieldService:
     automatic creation of the Estimate field when missing.
     """
 
-    def __init__(self, graphql_client: GraphQLClient) -> None:
+    def __init__(self, graphql_client: GraphQLExecutor) -> None:
         self._client = graphql_client
 
     async def set_estimate(

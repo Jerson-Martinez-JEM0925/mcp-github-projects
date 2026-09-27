@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from clients.cache_manager import CacheManager
-from clients.graphql_client import GraphQLClient
+from core.protocols import GraphQLExecutor
 from core.config import get_settings
 from core.exceptions import (
     AuthenticationError,
@@ -48,7 +48,7 @@ class DiscoveryService:
 
     def __init__(
         self,
-        graphql_client: GraphQLClient,
+        graphql_client: GraphQLExecutor,
         cache_manager: CacheManager,
         cache_path: Path | None = None,
         context: GitHubContext | None = None,

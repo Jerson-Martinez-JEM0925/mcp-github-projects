@@ -37,6 +37,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Architecture: HARDENING_200 items 6-8** (issue #35, epic #33), no change to
+  any tool name or input schema (byte-identical `tools/list` at every access
+  level):
+  - `core/factory.py::ServiceFactory` is now the single construction point for
+    `GraphQLClient`, `GHCLIClient`, `CacheManager` and the services. It replaces
+    69 inline constructions in 23 tool modules; a test fails if a tool builds
+    one inline again. Tests inject fakes with `use_service_factory(...)`.
+  - `core/protocols.py` adds the `GraphQLExecutor` and `GHCLIRunner`
+    protocols; services and helpers are typed against them, and a contract test
+    checks the real clients still match.
+  - `core/context.py` runs every tool call in a `RequestContext`. Its
+    `correlation_id` prefixes each stderr log line of the call and is returned
+    as the new `ToolError.correlation_id` field.
 - `server.py` registration is now gated by `MCP_ACCESS_LEVEL`: only tools
   exposed at the configured level are registered. `scripts/count_tools.py`
   seeds a dummy target + `MCP_ACCESS_LEVEL=full` so the structural count stays

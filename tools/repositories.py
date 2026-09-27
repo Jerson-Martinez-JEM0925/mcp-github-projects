@@ -12,12 +12,12 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from clients.gh_cli_client import CLIError, GHCLIClient
+from clients.gh_cli_client import CLIError
 from core.access import enforce_scope
-from core.auth import resolve_token
 from core.config import get_settings
 from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
+from core.factory import get_service_factory
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +129,7 @@ async def create_repository(params: CreateRepositoryInput) -> dict:
     error payloads are never returned.
     """
     try:
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         owner = _owner_login(params)
         settings = get_settings()
         if settings.scope_lock:
@@ -154,7 +154,7 @@ async def create_repository(params: CreateRepositoryInput) -> dict:
                 suggestion="Use public/private for a user repository or choose an organization owner.",
             )
 
-        gh_client = GHCLIClient()
+        gh_client = get_service_factory().gh()
         args = [
             "api",
             "--method",

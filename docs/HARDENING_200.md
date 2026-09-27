@@ -13,9 +13,9 @@ Leyenda: **A** aplicado en esta ola · **E** existente/verificado · **P** pendi
 3. **A** Validar configuración con Pydantic antes de registrar herramientas; evita límites inválidos en runtime.
 4. **A** Separar límites de red, paginación, caché y CLI en settings; facilita operación por ambiente.
 5. **E** Conservar la separación herramientas → servicios → clientes → GitHub.
-6. **P** Añadir un `ServiceFactory` para eliminar construcción repetida de clientes en cada herramienta.
-7. **P** Añadir un `RequestContext` por invocación con request ID local y metadata de operación.
-8. **P** Definir interfaces Protocol para GraphQL y gh CLI; simplifica mocks y pruebas contractuales.
+6. **A** Añadir un `ServiceFactory` para eliminar construcción repetida de clientes en cada herramienta (`core/factory.py`, #35).
+7. **A** Añadir un `RequestContext` por invocación con request ID local y metadata de operación (`core/context.py`, `ToolError.correlation_id`, #35).
+8. **A** Definir interfaces Protocol para GraphQL y gh CLI; simplifica mocks y pruebas contractuales (`core/protocols.py`, #35).
 9. **P** Eliminar la duplicación física entre `mcp/` y el paquete backend mediante un paquete compartido versionado.
 10. **P** Añadir chequeo CI que compare hashes de ambas implementaciones antes de publicar la imagen.
 

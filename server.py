@@ -11,6 +11,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import logging
 import sys
 
 from fastmcp import FastMCP
@@ -18,6 +19,7 @@ from fastmcp import FastMCP
 from core.auth import resolve_token, validate_scopes
 from core.access import AccessLevel, is_exposed
 from core.config import get_settings
+from core.context import RequestContextFilter, with_request_context
 from tools.projects.archive import (
     archive_project_item,
     move_to_done,
@@ -191,7 +193,9 @@ def _register_tools() -> dict[str, int]:
         # complete_issue is imported under an alias, so resolve its real name.
         tool_name = "complete_issue" if _fn is complete_issue_workflow else _fn.__name__
         if is_exposed(tool_name, level):
-            mcp.tool()(_fn)
+            # Each call runs in its own RequestContext (correlation ID in logs
+            # and error envelopes). functools.wraps keeps name + schema intact.
+            mcp.tool()(with_request_context(_fn, tool_name))
             registered += 1
         else:
             hidden += 1
@@ -259,12 +263,26 @@ async def _validate_auth_on_startup() -> None:
 # ── Main Entry Point ─────────────────────────────────────────────────────────
 
 
+def _configure_logging() -> None:
+    """Send logs to stderr (stdout is the MCP protocol), tagged per request."""
+    handler = logging.StreamHandler(sys.stderr)
+    handler.addFilter(RequestContextFilter())
+    handler.setFormatter(
+        logging.Formatter("%(levelname)s [%(correlation_id)s %(tool)s] %(name)s: %(message)s")
+    )
+    root = logging.getLogger()
+    root.addHandler(handler)
+    if root.level == logging.NOTSET or root.level > logging.WARNING:
+        root.setLevel(logging.WARNING)
+
+
 def main() -> None:
     """Run the MCP server with stdio transport.
 
     1. Validates authentication (token + scopes) within timeout.
     2. Starts the FastMCP server on stdio transport.
     """
+    _configure_logging()
     asyncio.run(_validate_auth_on_startup())
     mcp.run(transport="stdio")
 

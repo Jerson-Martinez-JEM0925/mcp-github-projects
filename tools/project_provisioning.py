@@ -23,8 +23,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from auth import resolve_token
-from clients.graphql_client import GraphQLClient
+from core.protocols import GraphQLExecutor
 from config import get_settings
 from core.access import enforce_scope
 from error_handling import build_error_response, handle_tool_error
@@ -41,6 +40,7 @@ from graphql.queries import (
     get_owner_id_query,
 )
 from models.responses import ToolSuccess
+from core.factory import get_service_factory
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +156,7 @@ class ListProjectsInput(BaseModel):
 
 
 async def _resolve_owner_id(
-    client: GraphQLClient, owner_login: str, owner_type: str
+    client: GraphQLExecutor, owner_login: str, owner_type: str
 ) -> str | None:
     """Resolve the GraphQL node ID for a user/org owner login."""
     query = get_owner_id_query(owner_type)  # type: ignore[arg-type]
@@ -177,7 +177,6 @@ async def create_project(params: CreateProjectInput) -> dict:
         ToolSuccess with the new project's id, number, title, url, public flag.
     """
     try:
-        token = await resolve_token()
         settings = get_settings()
         if settings.scope_lock:
             return build_error_response(
@@ -195,7 +194,7 @@ async def create_project(params: CreateProjectInput) -> dict:
             )
         owner_login = params.owner_login or settings.org_name
         owner_type = params.owner_type or settings.owner_type
-        client = GraphQLClient(token=token)
+        client = await get_service_factory().graphql()
 
         owner_id = await _resolve_owner_id(client, owner_login, owner_type)
         if not owner_id:
@@ -247,8 +246,7 @@ async def create_project(params: CreateProjectInput) -> dict:
 async def update_project(params: UpdateProjectInput) -> dict:
     """Update a Project V2's visibility, description, README, or closed state."""
     try:
-        token = await resolve_token()
-        client = GraphQLClient(token=token)
+        client = await get_service_factory().graphql()
         result = await client.execute_with_retry(
             UPDATE_PROJECT_MUTATION,
             {
@@ -285,8 +283,7 @@ async def create_project_field(params: CreateProjectFieldInput) -> dict:
     created as typed fields.
     """
     try:
-        token = await resolve_token()
-        client = GraphQLClient(token=token)
+        client = await get_service_factory().graphql()
 
         if params.data_type == "SINGLE_SELECT":
             if not params.options:
@@ -348,12 +345,11 @@ async def create_project_field(params: CreateProjectFieldInput) -> dict:
 async def link_repository(params: LinkRepositoryInput) -> dict:
     """Link a repository to a Project V2 board so its issues can be added."""
     try:
-        token = await resolve_token()
         settings = get_settings()
         owner = params.owner_login or settings.org_name
         repo = params.repo_name or settings.repo_name
         enforce_scope(owner=owner, repo=repo)
-        client = GraphQLClient(token=token)
+        client = await get_service_factory().graphql()
 
         repo_result = await client.execute_with_retry(
             REPO_ID_QUERY, {"owner": owner, "name": repo}
@@ -387,12 +383,11 @@ async def link_repository(params: LinkRepositoryInput) -> dict:
 async def list_projects(params: ListProjectsInput) -> dict:
     """List Project V2 boards owned by a user or organization."""
     try:
-        token = await resolve_token()
         settings = get_settings()
         owner = params.owner_login or settings.org_name
         owner_type = params.owner_type or settings.owner_type
         enforce_scope(owner=owner)
-        client = GraphQLClient(token=token)
+        client = await get_service_factory().graphql()
 
         field = "user" if owner_type == "user" else "organization"
         query = (

@@ -16,11 +16,11 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from core.auth import resolve_token
-from clients.gh_cli_client import CLIError, GHCLIClient
+from clients.gh_cli_client import CLIError
 from core.config import get_settings
 from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
+from core.factory import get_service_factory
 
 logger = logging.getLogger(__name__)
 
@@ -79,18 +79,12 @@ async def move_to_status(params: MoveToStatusInput) -> dict:
     Returns:
         ToolSuccess on success, or ToolError on failure.
     """
-    from clients.cache_manager import CacheManager
-    from clients.graphql_client import GraphQLClient
-    from services.discovery_service import DiscoveryService
-    from services.project_service import ProjectService
 
     try:
-        token = await resolve_token()
-        graphql_client = GraphQLClient(token=token)
-        cache_manager = CacheManager()
-        gh_client = GHCLIClient()
-        discovery = DiscoveryService(graphql_client=graphql_client, cache_manager=cache_manager)
-        project_service = ProjectService(graphql_client=graphql_client, gh_client=gh_client)
+        graphql_client = await get_service_factory().graphql()
+        gh_client = get_service_factory().gh()
+        discovery = await get_service_factory().discovery_service(graphql_client)
+        project_service = await get_service_factory().project_service(graphql_client, gh_client)
         metadata = await discovery.get_cached_or_discover()
 
         await project_service.update_field(
@@ -124,18 +118,12 @@ async def bulk_update_items(params: BulkUpdateItemsInput) -> dict:
     Returns:
         ToolSuccess with results per item.
     """
-    from clients.cache_manager import CacheManager
-    from clients.graphql_client import GraphQLClient
-    from services.discovery_service import DiscoveryService
-    from services.project_service import ProjectService
 
     try:
-        token = await resolve_token()
-        graphql_client = GraphQLClient(token=token)
-        cache_manager = CacheManager()
-        gh_client = GHCLIClient()
-        discovery = DiscoveryService(graphql_client=graphql_client, cache_manager=cache_manager)
-        project_service = ProjectService(graphql_client=graphql_client, gh_client=gh_client)
+        graphql_client = await get_service_factory().graphql()
+        gh_client = get_service_factory().gh()
+        discovery = await get_service_factory().discovery_service(graphql_client)
+        project_service = await get_service_factory().project_service(graphql_client, gh_client)
         metadata = await discovery.get_cached_or_discover()
 
         results: list[dict] = []
@@ -182,10 +170,10 @@ async def get_issue_detail(params: GetIssueDetailInput) -> dict:
         ToolSuccess with full issue details.
     """
     try:
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh_client = GHCLIClient()
+        gh_client = get_service_factory().gh()
 
         result = await gh_client.run([
             "issue", "view", str(params.issue_number), "--repo", repo,
@@ -260,10 +248,10 @@ async def list_sub_issues(params: ListSubIssuesInput) -> dict:
         ToolSuccess with list of sub-issues.
     """
     try:
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh_client = GHCLIClient()
+        gh_client = get_service_factory().gh()
 
         node_result = await gh_client.run([
             "api", f"repos/{repo}/issues/{params.issue_number}", "--jq", ".node_id",
@@ -336,10 +324,10 @@ async def remove_sub_issue(params: RemoveSubIssueInput) -> dict:
         ToolSuccess on success, or ToolError on failure.
     """
     try:
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh_client = GHCLIClient()
+        gh_client = get_service_factory().gh()
 
         parent_result = await gh_client.run([
             "api", f"repos/{repo}/issues/{params.parent_issue_number}", "--jq", ".node_id",
@@ -409,10 +397,10 @@ async def reopen_issue(params: ReopenIssueInput) -> dict:
         ToolSuccess on success, or ToolError on failure.
     """
     try:
-        await resolve_token()
+        await get_service_factory().ensure_auth()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh_client = GHCLIClient()
+        gh_client = get_service_factory().gh()
 
         await gh_client.run([
             "issue", "reopen", str(params.issue_number), "--repo", repo,

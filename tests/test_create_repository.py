@@ -41,8 +41,8 @@ async def test_create_repository_success() -> None:
     """A public user repository returns safe repository metadata."""
     run_mock = AsyncMock(return_value=_result(REPOSITORY_RESPONSE))
 
-    with patch("tools.repositories.resolve_token", new=AsyncMock(return_value="token")), \
-            patch("tools.repositories.GHCLIClient.run", new=run_mock):
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="token")), \
+            patch("clients.gh_cli_client.GHCLIClient.run", new=run_mock):
         result = await create_repository(
             CreateRepositoryInput(name="mcp-monday-projects", owner="jersonmartinez")
         )
@@ -60,7 +60,7 @@ async def test_create_repository_success() -> None:
 @pytest.mark.anyio
 async def test_internal_visibility_requires_organization() -> None:
     """Internal repositories cannot be created under a user account."""
-    with patch("tools.repositories.resolve_token", new=AsyncMock(return_value="token")):
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="token")):
         result = await create_repository(
             CreateRepositoryInput(
                 name="internal-repository",
@@ -84,8 +84,8 @@ async def test_duplicate_repository_is_classified_as_validation() -> None:
         )
     )
 
-    with patch("tools.repositories.resolve_token", new=AsyncMock(return_value="token")), \
-            patch("tools.repositories.GHCLIClient.run", new=run_mock):
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="token")), \
+            patch("clients.gh_cli_client.GHCLIClient.run", new=run_mock):
         result = await create_repository(
             CreateRepositoryInput(name="mcp-monday-projects", owner="jersonmartinez")
         )

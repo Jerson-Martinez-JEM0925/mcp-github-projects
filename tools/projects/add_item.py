@@ -14,14 +14,9 @@ import logging
 
 from pydantic import BaseModel, Field
 
-from core.auth import resolve_token
-from clients.cache_manager import CacheManager
-from clients.gh_cli_client import GHCLIClient
-from clients.graphql_client import GraphQLClient
 from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
-from services.discovery_service import DiscoveryService
-from services.project_service import ProjectService
+from core.factory import get_service_factory
 
 logger = logging.getLogger(__name__)
 
@@ -50,19 +45,11 @@ async def add_item_to_project(params: AddItemToProjectInput) -> dict:
         or ToolError on failure.
     """
     try:
-        token = await resolve_token()
-        graphql_client = GraphQLClient(token=token)
-        cache_manager = CacheManager()
-        gh_client = GHCLIClient()
+        graphql_client = await get_service_factory().graphql()
+        gh_client = get_service_factory().gh()
 
-        discovery_service = DiscoveryService(
-            graphql_client=graphql_client,
-            cache_manager=cache_manager,
-        )
-        project_service = ProjectService(
-            graphql_client=graphql_client,
-            gh_client=gh_client,
-        )
+        discovery_service = await get_service_factory().discovery_service(graphql_client)
+        project_service = await get_service_factory().project_service(graphql_client, gh_client)
 
         metadata = await discovery_service.get_cached_or_discover()
 

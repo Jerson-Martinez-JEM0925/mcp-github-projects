@@ -159,6 +159,19 @@ Error: Insufficient token scopes. Missing scopes: project, read:org. Required sc
 | `rate_limit` | API rate limit exceeded | Yes — after reset time |
 | `internal` | Network failure, timeout, or unexpected server error | Conditional — reads retry once automatically |
 
+### Correlating an error with the server logs
+
+Every error envelope has a `correlation_id` (12 hex characters). The server
+prints the same ID at the start of each stderr log line of that call:
+
+```
+ERROR [f805e839ca90 get_issue_detail] tools.issues.advanced_operations: CLI error in get_issue_detail: ...
+```
+
+Filter the container's stderr by that ID to see everything the failing call
+logged. `request_id` is a different field: GitHub's own `X-Request-Id`, useful
+when escalating to GitHub support.
+
 ---
 
 ## Cache is ignored or refreshed unexpectedly
