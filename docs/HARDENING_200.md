@@ -2,9 +2,11 @@
 
 Fecha: 2026-08-13
 Alcance: repositorio raíz (`server.py`, `tools/`, `services/`, `clients/`, `graphql/`, `models/`)
-Leyenda: **A** aplicado en esta ola · **E** existente/verificado · **P** pendiente de una fase posterior.
+Leyenda: **A** aplicado · **E** existente/verificado · **P** backlog priorizado.
 
-> Este registro evita confundir inventario con implementación. Las mejoras marcadas **A** tienen cambios en código y validación de sintaxis dentro de Docker. Las marcadas **E** ya estaban presentes y se conservaron. Las **P** son especificaciones concretas priorizadas; no se declaran terminadas.
+> Este documento es un registro de hardening y no una lista de bloqueadores de
+> release. Los puntos **A** tienen implementación y validación; los **P** son
+> mejoras futuras que se pueden abordar sin romper el contrato estable.
 
 ## 1. Arquitectura y límites de responsabilidad
 

@@ -1,0 +1,7 @@
+{
+  "ignorePatterns": [
+    { "pattern": "^https://x-access-token:" },
+    { "pattern": "^https://github.com/.+\\.wiki" }
+  ],
+  "replacementPatterns": []
+}

@@ -1,0 +1,38 @@
+---
+# yamllint configuration
+# Used by .github/workflows/pr-checks.yaml (yamllint -c .yamllint.yml .)
+extends: default
+
+yaml-files:
+  - '*.yaml'
+  - '*.yml'
+  - '.yamllint'
+
+ignore: |
+  node_modules/
+  .git/
+  .venv/
+  venv/
+
+rules:
+  # GitHub Actions and many tools generate long lines; do not fail on length.
+  line-length:
+    max: 160
+    level: warning
+    allow-non-breakable-words: true
+  # 'on:' in workflows is parsed as the boolean true by some linters.
+  truthy:
+    allowed-values: ['true', 'false']
+    check-keys: false
+  document-start:
+    present: true
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: disable
+  indentation:
+    spaces: 2
+    indent-sequences: consistent
+  braces:
+    max-spaces-inside: 1
+  brackets:
+    max-spaces-inside: 1

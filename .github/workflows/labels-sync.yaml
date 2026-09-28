@@ -1,0 +1,41 @@
+---
+# Labels Sync
+# Reconciles repository labels with the declarative set in .github/labels.yml.
+# Runs on changes to the label file (via push to main) and on demand.
+name: Labels Sync
+run-name: 'Labels Sync — ${{ github.ref_name }}'
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/labels.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: labels-sync
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    name: Sync Labels
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Apply labels from .github/labels.yml
+        uses: crazy-max/ghaction-github-labeler@de749cf181958193cb7debf1a9c5bb28922f3e1b # v5.3.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          yaml-file: .github/labels.yml
+          skip-delete: true
+          dry-run: false
