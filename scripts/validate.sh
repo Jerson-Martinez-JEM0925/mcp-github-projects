@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2034,SC2181
 # ── MCP Local Validation ─────────────────────────────────────────────────────
 # Runs the same checks as the GitHub Actions MCP CI pipeline locally.
 # Execute BEFORE creating a PR or pushing changes to catch issues early.
@@ -15,6 +16,7 @@
 #   ./mcp/scripts/validate.sh --quick   # Skip image build (use cached)
 #   ./mcp/scripts/validate.sh --fix     # Auto-fix BOM characters
 #
+# shellcheck disable=SC2034,SC2181
 # Exit codes:
 #   0 — All checks pass (safe to push)
 #   1 — One or more checks failed (do NOT push)
