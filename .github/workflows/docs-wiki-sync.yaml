@@ -1,0 +1,99 @@
+---
+# Docs — Wiki Sync
+# On push to main touching docs/**, validate the Markdown (markdownlint +
+# link check) then mirror docs/ into the repository Wiki. Links are stripped
+# of their trailing .md so they resolve as Wiki page names.
+name: Docs — Wiki Sync
+run-name: 'Wiki Sync — ${{ github.ref_name }}'
+
+on:
+  push:
+    branches: [main]
+    paths: ['docs/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-wiki-sync
+  cancel-in-progress: true
+
+env:
+  DOCS_DIR: docs
+  BOT_NAME: 'github-actions[bot]'
+  BOT_EMAIL: 'github-actions[bot]@users.noreply.github.com'
+
+jobs:
+  validate:
+    name: Validate Markdown
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20'
+
+      - name: Markdown lint
+        run: |
+          npx --yes markdownlint-cli2 "${DOCS_DIR}/**/*.md"
+
+      - name: Link check
+        run: |
+          npx --yes markdown-link-check --quiet --config .github/mlc-config.json \
+            $(find "${DOCS_DIR}" -name '*.md' -type f) 2>/dev/null || \
+          find "${DOCS_DIR}" -name '*.md' -type f -print0 | \
+            xargs -0 -n1 npx --yes markdown-link-check --quiet
+
+  sync:
+    name: Sync to Wiki
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Mirror docs/ into the Wiki
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          WIKI_URL="https://x-access-token:${GH_TOKEN}@github.com/${REPO}.wiki.git"
+          if ! git clone "$WIKI_URL" wiki_repo; then
+            echo "❌ Failed to clone the Wiki."
+            echo "   1. Initialize the Wiki first: create at least one page in the Wiki tab."
+            echo "   2. Ensure the token can write to the Wiki (contents: write is default GITHUB_TOKEN)."
+            exit 1
+          fi
+
+          rsync -av --delete --exclude='.git' "${DOCS_DIR}/" wiki_repo/
+
+          # Strip the .md suffix from intra-doc links so they resolve as Wiki pages.
+          find wiki_repo -name '*.md' -type f \
+            -exec sed -i -E 's/(\]\([^)]*)\.md([)#])/\1\2/g' {} +
+          find wiki_repo -name '*.md' -type f \
+            -exec sed -i -E 's/href="([^"]+)\.md"/href="\1"/g' {} +
+
+          cd wiki_repo
+          git config user.name "${BOT_NAME}"
+          git config user.email "${BOT_EMAIL}"
+          git add -A
+          if git diff-index --quiet HEAD --; then
+            echo "No differences to sync."
+          else
+            git commit -m "docs: automated sync from docs/ [skip ci]"
+            git push origin HEAD:master
+            echo "✅ Wiki updated successfully."
+          fi

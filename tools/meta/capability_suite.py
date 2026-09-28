@@ -238,7 +238,7 @@ async def format_issue_markdown(params: MarkdownInput) -> dict:
 @_guard("Add acceptance criteria failed")
 async def add_issue_acceptance_criteria(params: CriteriaInput) -> dict:
     criteria = "\n".join(f"- [ ] {item.strip()}" for item in normalize_unique(params.criteria))
-    suffix = "\n\n## Criterio de aceptación\n" + criteria
+    suffix = "\n\n## Acceptance Criteria\n" + criteria
     return _success({"markdown": params.text.rstrip() + suffix + "\n", "criteria_count": len(params.criteria)})
 
 
@@ -338,7 +338,7 @@ async def comment_issue_progress(params: IssueCommentInput) -> dict:
 
 @_guard("Comment issue plan failed")
 async def comment_issue_plan(params: IssueCommentInput) -> dict:
-    return await _comment_issue(params.issue_number, f"## Plan de implementación\n\n{params.comment}")
+    return await _comment_issue(params.issue_number, f"## Implementation Plan\n\n{params.comment}")
 
 
 @_guard("Comment issue blocker failed")
@@ -348,7 +348,7 @@ async def comment_issue_blocker(params: IssueCommentInput) -> dict:
 
 @_guard("Comment issue resolution failed")
 async def comment_issue_resolution(params: IssueCommentInput) -> dict:
-    return await _comment_issue(params.issue_number, f"## Resolución\n\n{params.comment}")
+    return await _comment_issue(params.issue_number, f"## Resolution\n\n{params.comment}")
 
 
 @_guard("List issue comments failed")

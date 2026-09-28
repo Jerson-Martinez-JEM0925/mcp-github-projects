@@ -5,6 +5,25 @@ All notable changes to the GitHub Project Management MCP Server will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-09-28
+
+### Added
+
+- **Stable contract guard:** `tests/test_contracts.py` freezes the public tool
+  name, description, input-schema, and output-schema digest.
+- **Repository quality workflows:** PR title/branch checks, YAML and shell
+  linting, security audits, declarative label sync, Dependabot, and optional
+  documentation-to-Wiki synchronization.
+- **Stability policy:** compatibility and deprecation rules are documented in
+  `docs/STABILITY.md`.
+
+### Changed
+
+- Corrected public generated headings and comments to English while retaining
+  Spanish heading parsing for existing issue bodies.
+- Clarified in `docs/HARDENING_200.md` that completed architecture items are
+  applied and remaining entries are backlog, not missing release functionality.
+
 ## [Unreleased]
 
 ## [1.1.1] - 2026-09-27

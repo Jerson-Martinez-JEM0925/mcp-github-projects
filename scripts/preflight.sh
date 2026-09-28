@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2181
 # ── MCP Preflight Check ──────────────────────────────────────────────────────
 # Validates prerequisites before starting the MCP server.
 # Run this ONCE before first use, or after environment changes.
@@ -13,6 +14,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
+# shellcheck disable=SC2181
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'

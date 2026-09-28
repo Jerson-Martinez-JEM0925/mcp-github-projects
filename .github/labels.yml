@@ -1,0 +1,93 @@
+---
+# .github/labels.yml
+# Declarative label set for the GitHub Project MCP server (public OSS).
+# Consumed by .github/workflows/labels-sync.yaml via
+# crazy-max/ghaction-github-labeler. Colors are 6-digit hex WITHOUT the '#'.
+
+# ── Type ──────────────────────────────────────────────────────────────────
+- name: 'bug'
+  color: 'd73a4a'
+  description: "Something isn't working"
+
+- name: 'feature'
+  color: '0075ca'
+  description: 'New feature or request'
+
+- name: 'docs'
+  color: '0e8a16'
+  description: 'Documentation changes'
+
+- name: 'chore'
+  color: 'e4e669'
+  description: 'Maintenance and housekeeping'
+
+- name: 'refactor'
+  color: '84cc16'
+  description: 'Code refactoring, no behavior change'
+
+- name: 'security'
+  color: 'e11d48'
+  description: 'Security-related change'
+
+- name: 'test'
+  color: 'c2e0c6'
+  description: 'Tests and test infrastructure'
+
+# ── State ─────────────────────────────────────────────────────────────────
+- name: 'needs-triage'
+  color: 'ededed'
+  description: 'Awaiting initial review and triage'
+
+- name: 'in-progress'
+  color: '0052cc'
+  description: 'Currently being worked on'
+
+- name: 'blocked'
+  color: 'b60205'
+  description: 'Blocked by an external factor or dependency'
+
+- name: 'needs-review'
+  color: 'fbca04'
+  description: 'Waiting for review'
+
+# ── Priority ──────────────────────────────────────────────────────────────
+- name: 'priority:urgent'
+  color: '9e0142'
+  description: 'Urgent — address immediately'
+
+- name: 'priority:high'
+  color: 'e11d48'
+  description: 'High priority'
+
+- name: 'priority:medium'
+  color: 'f59e0b'
+  description: 'Medium priority'
+
+- name: 'priority:low'
+  color: '84cc16'
+  description: 'Low priority'
+
+# ── Special ───────────────────────────────────────────────────────────────
+- name: 'good first issue'
+  color: '7057ff'
+  description: 'Good for newcomers'
+
+- name: 'help wanted'
+  color: '008672'
+  description: 'Extra attention is needed'
+
+- name: 'epic'
+  color: '3e4b9e'
+  description: 'Tracking issue grouping related work'
+
+- name: 'dependencies'
+  color: '0366d6'
+  description: 'Dependency updates'
+
+- name: 'wontfix'
+  color: 'ffffff'
+  description: 'This will not be worked on'
+
+- name: 'duplicate'
+  color: 'cfd3d7'
+  description: 'This issue or PR already exists'

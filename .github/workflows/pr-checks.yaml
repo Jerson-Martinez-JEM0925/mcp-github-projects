@@ -1,0 +1,100 @@
+---
+# PR Checks
+# Pull-request validation: conventional-commit PR title, YAML lint,
+# shell lint, and branch-name convention.
+name: PR Checks
+run-name: 'PR #${{ github.event.pull_request.number }} — Checks'
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-title:
+    name: PR Title (Conventional Commits)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    steps:
+      - name: Lint PR title
+        uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            chore
+            refactor
+            test
+            ci
+            perf
+            build
+            revert
+          requireScope: false
+          validateSingleCommit: false
+          wip: true
+
+  lint-yaml:
+    name: YAML Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Run yamllint
+        run: |
+          pipx install yamllint || pip install --user yamllint
+          yamllint -c .yamllint.yml .
+
+  lint-shell:
+    name: Shell Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Run shellcheck
+        run: |
+          find . -type f -name '*.sh' \
+            -not -path './.git/*' -not -path './node_modules/*' \
+            -exec shellcheck {} +
+
+  branch-name:
+    name: Branch Name
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate branch name
+        env:
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          PATTERN='^(feat|fix|docs|chore|refactor|test|ci|perf|build|revert)/([a-z0-9]+(-[a-z0-9]+)*)$'
+          if [[ "$BRANCH" =~ $PATTERN ]]; then
+            echo "✅ Branch name '$BRANCH' is valid."
+          else
+            echo "❌ Invalid branch name: '$BRANCH'"
+            echo "Expected format: <type>/<description>"
+            echo "Allowed types: feat, fix, docs, chore, refactor, test, ci, perf, build, revert"
+            echo "Example: feat/add-milestone-tool"
+            exit 1
+          fi

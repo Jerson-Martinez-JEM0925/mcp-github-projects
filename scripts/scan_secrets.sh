@@ -14,6 +14,7 @@
 #   ./mcp/scripts/scan_secrets.sh              # Scan working tree
 #   ./mcp/scripts/scan_secrets.sh --history    # Scan git history (slow)
 # ─────────────────────────────────────────────────────────────────────────────
+# shellcheck disable=SC2015,SC2034
 set -euo pipefail
 
 RED='\033[0;31m'

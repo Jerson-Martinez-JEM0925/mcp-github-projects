@@ -18,6 +18,9 @@ Run inside Docker:
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import importlib
+import json
 import os
 import sys
 
@@ -357,4 +360,32 @@ class TestCapabilitiesCoverage:
                 missing.append(name)
         assert not missing, (
             f"CAPABILITY_TOOL_NAMES references non-existent functions: {missing}"
+        )
+
+
+class TestStableToolSchemas:
+    """Freeze the public tool contract for the 1.x release line."""
+
+    def test_tool_schema_digest(self) -> None:
+        """A schema change must be intentional and called out in release notes."""
+        os.environ["MCP_ACCESS_LEVEL"] = "full"
+        import server
+
+        server = importlib.reload(server)
+        tools = asyncio.run(server.mcp.list_tools())
+        contracts = [
+            {
+                "name": tool.name,
+                "description": tool.description or "",
+                "parameters": tool.parameters,
+                "output_schema": tool.output_schema,
+            }
+            for tool in tools
+        ]
+        contracts.sort(key=lambda item: item["name"])
+        canonical = json.dumps(contracts, sort_keys=True, separators=(",", ":"), default=str)
+        digest = hashlib.sha256(canonical.encode()).hexdigest()
+        assert digest == "d506e3a1609d323cdba5bf4a5d11eaa32e9806e337c6a3728faa0489cf07931a", (
+            f"Stable tool schema digest changed: {digest}. "
+            "Update intentionally and document the protocol change."
         )

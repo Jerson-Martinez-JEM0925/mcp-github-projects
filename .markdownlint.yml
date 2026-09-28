@@ -1,0 +1,30 @@
+---
+# markdownlint configuration
+# Used by .github/workflows/docs-wiki-sync.yaml (markdownlint-cli2).
+# Rule reference: https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+default: true
+
+# MD013 line-length: prose and tables routinely exceed 80 cols.
+MD013: false
+
+# MD033 inline HTML: allowed (badges, details/summary, tables).
+MD033: false
+
+# MD041 first-line-heading: docs may lead with a badge or front matter.
+MD041: false
+
+# MD024 no-duplicate-headings: allow same heading text under different parents.
+MD024:
+  siblings_only: true
+
+# MD029 ordered-list prefix: allow ordered increment.
+MD029:
+  style: 'ordered'
+
+# MD007 unordered list indentation: 2 spaces.
+MD007:
+  indent: 2
+
+# MD004 unordered list style: dashes.
+MD004:
+  style: 'dash'

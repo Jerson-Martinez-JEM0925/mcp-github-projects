@@ -6,6 +6,10 @@
 |---------|-----------|
 | 1.x     | Yes       |
 
+The `1.x` line follows the compatibility contract in
+[`docs/STABILITY.md`](docs/STABILITY.md). Security fixes target the latest
+1.x release; breaking changes require a major version.
+
 ## Reporting a Vulnerability
 
 If you discover a security vulnerability, please report it responsibly:

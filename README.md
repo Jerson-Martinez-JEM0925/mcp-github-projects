@@ -53,9 +53,10 @@ docker build -t mcp-github-projects:latest .   # or: make build
 ```
 
 Or use a released multi-arch image instead of building:
-`docker pull ghcr.io/jersonmartinez/mcp-github-projects:1.1.1` (also tagged
-`1.1` and `latest`; see [docs/RELEASING.md](docs/RELEASING.md)) and use that
-name wherever the examples say `mcp-github-projects:latest`.
+`docker pull ghcr.io/jersonmartinez/mcp-github-projects:1.2.0` (also tagged
+`1.2` and `latest`; see [docs/RELEASING.md](docs/RELEASING.md)) and use that
+name wherever the examples say `mcp-github-projects:latest`. The compatibility
+contract is documented in [docs/STABILITY.md](docs/STABILITY.md).
 
 ### 2. Configure your target
 
