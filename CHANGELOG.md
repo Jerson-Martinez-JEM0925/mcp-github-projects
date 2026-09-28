@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bare `Done` column made every finished card a candidate on every run. They
   are now compared emoji- and case-insensitively, the same rule `update_field`
   uses to resolve an option.
+- **`edit_issue` hid which resource was not found** (issue #47). Every
+  "not found" from `gh issue edit` became "Issue #N or referenced resource not
+  found", even when the issue existed and a label was missing. The message now
+  carries gh's own reason (e.g. `'chore' not found`).
 
 ## [1.1.0] - 2026-09-27
 
