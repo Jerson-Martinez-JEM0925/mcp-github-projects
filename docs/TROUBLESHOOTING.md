@@ -214,3 +214,15 @@ The GraphQL client treats malformed `X-RateLimit-Remaining` and `X-RateLimit-Res
 ## Docker validation fails
 
 Run syntax checks and tests inside a freshly built image (`make validate`, or `make test`, which builds with `INSTALL_TEST_DEPS=true` and runs `pytest`). A long-running container started from an older image does not reflect unbuilt edits, so always rebuild before validating.
+
+## Project fields with emoji prefixes
+
+Project V2 field titles are editable. A field titled `📊 Priority`, `📅 Due date`, or another symbol-prefixed variant is resolved consistently by discovery, creation validation, defaults, filters, reads, and writes. Use the canonical name (`Priority`, `Due date`) when possible; the prefix may be included when it is unique. If two fields normalize to the same name, the MCP rejects the request instead of choosing one.
+
+## Bulk imports and recoverable retries
+
+`create_project_item` is a multi-step operation: it creates an issue, adds it to the project, then applies fields. It validates discovered single-select options before creating the issue and returns the issue number, issue URL, project item ID, and failed step when a later operation fails. A retry is not automatically idempotent because GitHub issue creation has no caller-supplied idempotency key; importers must persist each successful issue number/item ID and reconcile with `search_issues` or `list_project_items` before retrying. `add_item_to_project` is idempotent for an existing issue/PR.
+
+## Org-level projects still need a repository
+
+`GH_PROJECT_REPO_NAME` remains required even for an organization-owned Project V2 because issue creation, labels, milestones, assignees, and issue/PR-to-project linking use a repository. Set it to the repository that owns the work items; `GH_PROJECT_ORG_NAME` and `GH_PROJECT_PROJECT_NUMBER` identify the organization project itself.

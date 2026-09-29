@@ -30,6 +30,7 @@ from core.exceptions import (
 )
 from models.responses import ToolSuccess, ToolError
 from services.field_defaults import compute_defaults
+from services.field_names import resolve_field
 from core.factory import get_service_factory
 
 logger = logging.getLogger(__name__)
@@ -179,7 +180,7 @@ async def create_project_item(
     # Pre-validate status and priority against known options to avoid
     # creating an issue that can't have its fields set.
     if status is not None:
-        status_field = metadata.fields.get("Status")
+        status_field = resolve_field(metadata, "Status")
         if status_field and status_field.options:
             valid_status_names = [opt.name for opt in status_field.options]
             if status not in valid_status_names:
@@ -193,7 +194,7 @@ async def create_project_item(
                 )
 
     if priority is not None:
-        priority_field = metadata.fields.get("Priority")
+        priority_field = resolve_field(metadata, "Priority")
         if priority_field and priority_field.options:
             valid_priority_names = [opt.name for opt in priority_field.options]
             if priority not in valid_priority_names:

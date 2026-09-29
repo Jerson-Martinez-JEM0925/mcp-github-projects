@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from datetime import date
 
 from core.protocols import GHCLIRunner
@@ -29,37 +28,21 @@ from graphql.queries import (
 from models.context import GitHubContext
 from models.items import ProjectItem
 from models.metadata import ProjectField, ProjectMetadata
+from services.field_names import bare_field_name, resolve_field
 
 logger = logging.getLogger(__name__)
 
-_LEADING_SYMBOLS = re.compile(r"^[\W_]+", re.UNICODE)
-
 
 def bare_option_name(name: str) -> str:
-    """Option name without a leading emoji/symbol prefix, casefolded."""
-    return _LEADING_SYMBOLS.sub("", name or "").strip().casefold()
+    """Backward-compatible alias for option/field prefix normalization."""
+    return bare_field_name(name)
 
 
 def _resolve_field_tolerant(
     metadata: ProjectMetadata, field_name: str
 ) -> ProjectField | None:
-    """Find a field whose title matches ``field_name`` ignoring a leading
-    emoji/symbol prefix and case.
-
-    Many boards title their single-select fields with an emoji prefix
-    (``📊 Priority``, ``📅 Start date``). A caller passing the canonical
-    ``Priority`` should still resolve. Returns the field on an unambiguous
-    match, or ``None`` when there is no match or more than one candidate.
-    """
-    target = bare_option_name(field_name)
-    if not target:
-        return None
-    matches = [
-        field
-        for name, field in metadata.fields.items()
-        if bare_option_name(name) == target
-    ]
-    return matches[0] if len(matches) == 1 else None
+    """Backward-compatible wrapper for shared field resolution."""
+    return resolve_field(metadata, field_name)
 
 
 class ProjectService:
@@ -205,10 +188,25 @@ class ProjectService:
         # The gh CLI outputs JSON with the item ID when --format json is used.
         try:
             output = json.loads(result.stdout)
-            item_id: str = output.get("id", "")
-        except (json.JSONDecodeError, AttributeError):
+            if isinstance(output, dict):
+                item_id = (
+                    output.get("id")
+                    or (output.get("item") or {}).get("id")
+                    or output.get("item_id")
+                    or ""
+                )
+            else:
+                item_id = ""
+        except (json.JSONDecodeError, AttributeError, TypeError):
             # Fallback: try to extract ID from plain text output.
             item_id = result.stdout.strip()
+
+        if not item_id:
+            raise ValidationError(
+                "GitHub CLI item-add returned no project item ID. "
+                "Expected JSON with an 'id' (or 'item.id') field; "
+                "verify the gh CLI version and project write permissions."
+            )
 
         logger.info(
             "Added issue #%d to project %d, item ID: %s",
@@ -327,6 +325,11 @@ class ProjectService:
             .get("item", {})
             .get("id", "")
         )
+        if not item_id:
+            raise ValidationError(
+                "GitHub returned no project item ID after addProjectV2ItemById. "
+                "Verify project access and refresh metadata with discover_ids."
+            )
         logger.info(
             "Added content %s to project %d, item ID: %s",
             content_id,
@@ -359,13 +362,9 @@ class ProjectService:
             ValidationError: If field_name is not found in metadata,
                 or if value is not a valid option for single-select fields.
         """
-        # Resolve field_name to field definition.
-        field = metadata.fields.get(field_name)
-        if field is None:
-            # Fallback: tolerant match that ignores emoji/symbol prefixes and
-            # case, so a canonical name like "Priority" or "Start date"
-            # resolves to a board field titled "📊 Priority" / "📅 Start date".
-            field = _resolve_field_tolerant(metadata, field_name)
+        # Resolve field_name using the same exact/case-insensitive/prefix-tolerant
+        # rules used by validation and defaults.
+        field = resolve_field(metadata, field_name)
         if field is None:
             valid_fields = list(metadata.fields.keys())
             raise ValidationError(
@@ -472,7 +471,7 @@ class ProjectService:
         Raises:
             ValidationError: If value is not in the field's options.
         """
-        field = metadata.fields.get(field_name)
+        field = resolve_field(metadata, field_name)
         if field is None:
             # Field doesn't exist in project — skip validation.
             return
@@ -644,31 +643,32 @@ class ProjectService:
             if not field_info:
                 continue
             field_name = field_info.get("name", "")
+            canonical_field_name = bare_option_name(field_name)
 
             # ProjectV2ItemFieldSingleSelectValue
             if "name" in fv and field_name:
                 select_value = fv.get("name")
-                if field_name == "Status":
+                if canonical_field_name == "status":
                     status = select_value
-                elif field_name == "Priority":
+                elif canonical_field_name == "priority":
                     priority = select_value
 
             # ProjectV2ItemFieldDateValue
             if "date" in fv and field_name:
                 date_value = fv.get("date")
-                if field_name == "Due date":
+                if canonical_field_name == "due date":
                     due_date = date_value
 
             # ProjectV2ItemFieldNumberValue
             if "number" in fv and field_name:
                 number_value = fv.get("number")
-                if field_name == "Estimate":
+                if canonical_field_name == "estimate":
                     estimate = number_value
 
             # ProjectV2ItemFieldMilestoneValue
             if "milestone" in fv and field_name:
                 milestone_data = fv.get("milestone")
-                if milestone_data and field_name == "Milestone":
+                if milestone_data and canonical_field_name == "milestone":
                     milestone = milestone_data.get("title")
 
             # ProjectV2ItemFieldTextValue — title field from text type.

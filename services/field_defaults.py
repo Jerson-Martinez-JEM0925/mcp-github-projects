@@ -20,6 +20,7 @@ from typing import Any
 
 from core.config import GitHubProjectSettings
 from models.metadata import ProjectMetadata
+from services.field_names import resolve_field
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ DEFAULTABLE_FIELDS: tuple[str, ...] = (
 
 def _first_option_name(metadata: ProjectMetadata, field_name: str) -> str | None:
     """Return the first option name of a single-select field, if present."""
-    field = metadata.fields.get(field_name)
+    field = resolve_field(metadata, field_name)
     if field is None or not field.options:
         return None
     return field.options[0].name
@@ -45,7 +46,7 @@ def _first_option_name(metadata: ProjectMetadata, field_name: str) -> str | None
 
 def _option_exists(metadata: ProjectMetadata, field_name: str, value: str) -> bool:
     """Whether ``value`` is a valid option name for a single-select field."""
-    field = metadata.fields.get(field_name)
+    field = resolve_field(metadata, field_name)
     if field is None or not field.options:
         return False
     return any(opt.name == value for opt in field.options)
@@ -105,7 +106,7 @@ def compute_defaults(
             resolved[name] = value
 
     def _needs(field_name: str) -> bool:
-        return field_name in metadata.fields and field_name not in resolved
+        return resolve_field(metadata, field_name) is not None and field_name not in resolved
 
     # Status → first option.
     if _needs("Status"):
@@ -169,6 +170,6 @@ def unset_board_fields(
     missing = [
         name
         for name in DEFAULTABLE_FIELDS
-        if name in metadata.fields and name not in resolved
+        if resolve_field(metadata, name) is not None and name not in resolved
     ]
     return sorted(missing)

@@ -40,6 +40,7 @@ from graphql.queries import GET_ITEM_STATUS_QUERY
 from models.metadata import ProjectMetadata
 from models.responses import ToolSuccess
 from services.field_defaults import compute_defaults, unset_board_fields
+from services.field_names import resolve_field_name
 from services.issue_service import IssueService
 from services.project_service import ProjectService
 from core.factory import get_service_factory
@@ -631,11 +632,10 @@ def _normalize_field_name(
     if lower_name in _FIELD_NAME_MAP:
         return _FIELD_NAME_MAP[lower_name]
 
-    # Dynamic match against discovered board fields (case-insensitive).
+    # Dynamic match against discovered board fields (case-insensitive and
+    # tolerant of a unique leading emoji/symbol prefix).
     if metadata is not None:
-        for field_name in metadata.fields:
-            if field_name.lower() == lower_name:
-                return field_name
+        return resolve_field_name(metadata, raw_name)
 
     return None
 

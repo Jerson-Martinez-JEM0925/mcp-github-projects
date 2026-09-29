@@ -454,3 +454,98 @@ class TestTolerantFieldNameResolution:
             discovered_at=datetime(2026, 1, 1),
         )
         assert _resolve_field_tolerant(md, "Priority") is None
+
+
+def test_defaults_resolve_prefixed_board_fields() -> None:
+    from services.field_defaults import compute_defaults
+
+    metadata = ProjectMetadata(
+        project_id="PVT_prefixed",
+        owner="octocat",
+        project_number=1,
+        fields={
+            "📊 Priority": ProjectField(
+                id="F_priority",
+                name="📊 Priority",
+                data_type="SINGLE_SELECT",
+                options=[FieldOption(id="p_important", name="⚡ Important")],
+            ),
+            "📅 Due date": ProjectField(
+                id="F_due",
+                name="📅 Due date",
+                data_type="DATE",
+            ),
+        },
+        discovered_at=datetime(2026, 1, 1),
+    )
+
+    resolved = compute_defaults(
+        metadata=metadata,
+        settings=_settings(default_priority="Medium", default_due_days=7),
+        provided={},
+        today=date(2026, 1, 1),
+    )
+
+    assert resolved["Priority"] == "⚡ Important"
+    assert resolved["Due date"] == "2026-01-08"
+
+
+def test_project_item_reader_resolves_prefixed_field_values() -> None:
+    svc = ProjectService(graphql_client=object(), gh_client=object())
+    item = svc._parse_item_node(
+        {
+            "id": "ITEM_1",
+            "content": {
+                "__typename": "Issue",
+                "number": 1,
+                "title": "Prefixed fields",
+                "body": "",
+                "url": "https://github.com/octocat/demo/issues/1",
+                "assignees": {"nodes": []},
+                "labels": {"nodes": []},
+            },
+            "fieldValues": {
+                "nodes": [
+                    {"field": {"name": "📊 Priority"}, "name": "⚡ Important"},
+                    {"field": {"name": "📅 Due date"}, "date": "2026-01-08"},
+                ]
+            },
+        }
+    )
+
+    assert item is not None
+    assert item.priority == "⚡ Important"
+    assert item.due_date == "2026-01-08"
+
+
+class _FakeGH:
+    def __init__(self, stdout: str) -> None:
+        self.stdout = stdout
+
+    async def run(self, _argv):
+        from clients.gh_cli_client import CommandResult
+
+        return CommandResult(stdout=self.stdout, stderr="", return_code=0)
+
+
+@pytest.mark.anyio
+async def test_add_item_accepts_nested_cli_item_id() -> None:
+    svc = ProjectService(
+        graphql_client=_FakeGraphQL({}),
+        gh_client=_FakeGH('{"item":{"id":"ITEM_NESTED"}}'),
+        context=_user_context(),
+    )
+    assert await svc.add_item(_metadata(), 42) == "ITEM_NESTED"
+
+
+@pytest.mark.anyio
+async def test_add_item_rejects_missing_cli_item_id() -> None:
+    from core.exceptions import ValidationError
+
+    svc = ProjectService(
+        graphql_client=_FakeGraphQL({}),
+        gh_client=_FakeGH("{}"),
+        context=_user_context(),
+    )
+    with pytest.raises(ValidationError, match="no project item ID"):
+        await svc.add_item(_metadata(), 42)

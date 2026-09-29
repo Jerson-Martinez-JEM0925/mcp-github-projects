@@ -7,7 +7,7 @@ Usage guide for the GitHub Project Management MCP server, with examples per cate
 - **Organization**: (your configured org)
 - **Repository**: (your configured repo)
 - **Project number**: 1
-- **Status / Priority values**: read from your board at runtime (`discover_ids`); nothing is hardcoded. The examples below use a board whose Status options are 📢 Proposal, 📌 To Do, 🛠 In Progress, ⏸ Pending, ✅ Done, 🗑️ Trash and whose Priority options are Urgent, Important, Not urgent, Not important. A leading emoji is optional when naming an option (`"Done"` matches `✅ Done`).
+- **Status / Priority values and field titles**: read from your board at runtime (`discover_ids`); nothing is hardcoded. The examples below use a board whose Status options are 📢 Proposal, 📌 To Do, 🛠 In Progress, ⏸ Pending, ✅ Done, 🗑️ Trash and whose Priority options are Urgent, Important, Not urgent, Not important. A leading emoji is optional when naming an option (`"Done"` matches `✅ Done`) and when referring to a field (`"Priority"` matches an unambiguous `📊 Priority`). Ambiguous decorated field names are rejected rather than guessed.
 
 ---
 
