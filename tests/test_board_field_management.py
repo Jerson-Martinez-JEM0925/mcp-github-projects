@@ -384,3 +384,73 @@ async def test_add_item_by_content_id() -> None:
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+class TestTolerantFieldNameResolution:
+    """Field names with emoji/symbol prefixes resolve from canonical names."""
+
+    def _emoji_metadata(self) -> ProjectMetadata:
+        """A board whose single-select fields carry emoji prefixes, like a
+        real Projects V2 board configured with decorated field titles."""
+        return ProjectMetadata(
+            project_id="PVT_emoji",
+            owner="octocat",
+            project_number=1,
+            fields={
+                "Status": ProjectField(
+                    id="F_status", name="Status", data_type="SINGLE_SELECT",
+                    options=[FieldOption(id="s_todo", name="📌 To Do")],
+                ),
+                "📊 Priority": ProjectField(
+                    id="F_prio", name="📊 Priority", data_type="SINGLE_SELECT",
+                    options=[FieldOption(id="p_imp", name="⚡ Important")],
+                ),
+                "📅 Start date": ProjectField(
+                    id="F_start", name="📅 Start date", data_type="DATE",
+                ),
+            },
+            discovered_at=datetime(2026, 1, 1),
+        )
+
+    def test_canonical_name_resolves_emoji_field(self) -> None:
+        from services.project_service import _resolve_field_tolerant
+
+        md = self._emoji_metadata()
+        field = _resolve_field_tolerant(md, "Priority")
+        assert field is not None
+        assert field.id == "F_prio"
+
+    def test_multiword_canonical_name_resolves(self) -> None:
+        from services.project_service import _resolve_field_tolerant
+
+        md = self._emoji_metadata()
+        assert _resolve_field_tolerant(md, "start date").id == "F_start"
+
+    def test_no_match_returns_none(self) -> None:
+        from services.project_service import _resolve_field_tolerant
+
+        md = self._emoji_metadata()
+        assert _resolve_field_tolerant(md, "Nonexistent") is None
+
+    def test_exact_field_still_resolves_via_get(self) -> None:
+        # Exact names must keep working through the normal dict lookup, so the
+        # fallback never shadows an unambiguous exact match.
+        md = self._emoji_metadata()
+        assert md.fields.get("Status") is not None
+
+    def test_ambiguous_match_returns_none(self) -> None:
+        from services.project_service import _resolve_field_tolerant
+
+        md = ProjectMetadata(
+            project_id="PVT_dup", owner="octocat", project_number=1,
+            fields={
+                "📊 Priority": ProjectField(
+                    id="F_a", name="📊 Priority", data_type="SINGLE_SELECT",
+                ),
+                "⭐ Priority": ProjectField(
+                    id="F_b", name="⭐ Priority", data_type="SINGLE_SELECT",
+                ),
+            },
+            discovered_at=datetime(2026, 1, 1),
+        )
+        assert _resolve_field_tolerant(md, "Priority") is None
