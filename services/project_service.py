@@ -40,6 +40,28 @@ def bare_option_name(name: str) -> str:
     return _LEADING_SYMBOLS.sub("", name or "").strip().casefold()
 
 
+def _resolve_field_tolerant(
+    metadata: ProjectMetadata, field_name: str
+) -> ProjectField | None:
+    """Find a field whose title matches ``field_name`` ignoring a leading
+    emoji/symbol prefix and case.
+
+    Many boards title their single-select fields with an emoji prefix
+    (``📊 Priority``, ``📅 Start date``). A caller passing the canonical
+    ``Priority`` should still resolve. Returns the field on an unambiguous
+    match, or ``None`` when there is no match or more than one candidate.
+    """
+    target = bare_option_name(field_name)
+    if not target:
+        return None
+    matches = [
+        field
+        for name, field in metadata.fields.items()
+        if bare_option_name(name) == target
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
 class ProjectService:
     """Manages project item operations: list, add, update, archive.
 
@@ -339,6 +361,11 @@ class ProjectService:
         """
         # Resolve field_name to field definition.
         field = metadata.fields.get(field_name)
+        if field is None:
+            # Fallback: tolerant match that ignores emoji/symbol prefixes and
+            # case, so a canonical name like "Priority" or "Start date"
+            # resolves to a board field titled "📊 Priority" / "📅 Start date".
+            field = _resolve_field_tolerant(metadata, field_name)
         if field is None:
             valid_fields = list(metadata.fields.keys())
             raise ValidationError(
