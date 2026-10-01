@@ -223,6 +223,8 @@ Project V2 field titles are editable. A field titled `📊 Priority`, `📅 Due 
 
 `create_project_item` is a multi-step operation: it creates an issue, adds it to the project, then applies fields. It validates discovered single-select options before creating the issue and returns the issue number, issue URL, project item ID, and failed step when a later operation fails. A retry is not automatically idempotent because GitHub issue creation has no caller-supplied idempotency key; importers must persist each successful issue number/item ID and reconcile with `search_issues` or `list_project_items` before retrying. `add_item_to_project` is idempotent for an existing issue/PR.
 
+Assignees are applied **after** the issue exists, as a separate best-effort step. If the token may not assign (typical for a fork contributor on the upstream repository: `does not have the correct permissions to execute ReplaceActorsForAssignable`), the tool still succeeds: it returns the issue and a `warnings` entry naming the assignees that were not set, so there is nothing to retry. Before this change, `gh issue create --assignee` exited non-zero after creating the issue, the tool reported `Failed to create issue`, and a retry created a duplicate.
+
 ## Incomplete Project mutation responses
 
 **Symptom:** a field update appears to succeed, but the returned GraphQL payload does not contain a project item ID.
