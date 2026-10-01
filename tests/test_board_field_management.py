@@ -386,6 +386,39 @@ def anyio_backend() -> str:
     return "asyncio"
 
 
+@pytest.mark.anyio
+async def test_update_field_requires_project_item_id() -> None:
+    from core.exceptions import ValidationError
+
+    svc = ProjectService(
+        graphql_client=_FakeGraphQL(
+            {"data": {"updateProjectV2ItemFieldValue": {}}}
+        ),
+        gh_client=object(),
+        context=_user_context(),
+    )
+    with pytest.raises(ValidationError, match="no project item ID"):
+        await svc.update_field(_metadata(), "ITEM_1", "Priority", "High")
+
+
+@pytest.mark.anyio
+async def test_update_field_accepts_project_item_id() -> None:
+    svc = ProjectService(
+        graphql_client=_FakeGraphQL(
+            {
+                "data": {
+                    "updateProjectV2ItemFieldValue": {
+                        "projectV2Item": {"id": "ITEM_1"}
+                    }
+                }
+            }
+        ),
+        gh_client=object(),
+        context=_user_context(),
+    )
+    await svc.update_field(_metadata(), "ITEM_1", "Priority", "High")
+
+
 class TestTolerantFieldNameResolution:
     """Field names with emoji/symbol prefixes resolve from canonical names."""
 
