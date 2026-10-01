@@ -223,6 +223,14 @@ Project V2 field titles are editable. A field titled `📊 Priority`, `📅 Due 
 
 `create_project_item` is a multi-step operation: it creates an issue, adds it to the project, then applies fields. It validates discovered single-select options before creating the issue and returns the issue number, issue URL, project item ID, and failed step when a later operation fails. A retry is not automatically idempotent because GitHub issue creation has no caller-supplied idempotency key; importers must persist each successful issue number/item ID and reconcile with `search_issues` or `list_project_items` before retrying. `add_item_to_project` is idempotent for an existing issue/PR.
 
+## Incomplete Project mutation responses
+
+**Symptom:** a field update appears to succeed, but the returned GraphQL payload does not contain a project item ID.
+
+**Cause:** GitHub returned an incomplete `updateProjectV2ItemFieldValue` payload. The MCP does not treat a response without `data.updateProjectV2ItemFieldValue.projectV2Item.id` as success, because doing so can make a bulk import report fields as applied when the provider response is unusable.
+
+**Resolution:** the tool returns a validation error with the project item ID and field still available for recovery. Refresh metadata with `discover_ids`, verify the item with `list_project_items`, and retry only the affected field using `update_project_item_fields`. A response with zero field values is different: it is valid only when the mutation payload includes the returned project item ID.
+
 ## Org-level projects still need a repository
 
 `GH_PROJECT_REPO_NAME` remains required even for an organization-owned Project V2 because issue creation, labels, milestones, assignees, and issue/PR-to-project linking use a repository. Set it to the repository that owns the work items; `GH_PROJECT_ORG_NAME` and `GH_PROJECT_PROJECT_NUMBER` identify the organization project itself.

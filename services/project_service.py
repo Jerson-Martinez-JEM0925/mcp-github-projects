@@ -382,10 +382,14 @@ class ProjectService:
             "value": field_value,
         }
 
-        await self._graphql_client.execute_with_retry(
+        response = await self._graphql_client.execute_with_retry(
             UPDATE_FIELD_MUTATION,
             variables,
             is_mutation=True,
+        )
+        self._require_project_item_id(
+            response,
+            mutation="updateProjectV2ItemFieldValue",
         )
 
         logger.info(
@@ -424,6 +428,20 @@ class ProjectService:
         )
 
         logger.info("Archived item %s from project", item_id)
+
+    @staticmethod
+    def _require_project_item_id(response: dict, *, mutation: str) -> str:
+        """Require the project item ID returned by a Project V2 mutation."""
+        data = response.get("data", {}) if isinstance(response, dict) else {}
+        payload = data.get(mutation, {}) if isinstance(data, dict) else {}
+        item = payload.get("projectV2Item", {}) if isinstance(payload, dict) else {}
+        item_id = item.get("id") if isinstance(item, dict) else None
+        if not item_id:
+            raise ValidationError(
+                f"GitHub returned no project item ID after {mutation}. "
+                "Verify the project item exists and retry only the affected field."
+            )
+        return item_id
 
     # ── Private Helpers ──────────────────────────────────────────────────────
 
