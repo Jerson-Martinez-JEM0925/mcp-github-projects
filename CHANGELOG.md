@@ -26,6 +26,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`create_project_item` reported "Failed to create issue" for an issue that
+  already existed.** `gh issue create --assignee` creates the issue and only
+  then sets assignees; when the token may not assign (e.g. a fork contributor
+  on the upstream repository) gh exited non-zero and a retry created a
+  duplicate. Assignees are now applied with a separate `gh issue edit
+  --add-assignee` call after creation, and a failure there is returned as a
+  `warnings` entry on the successful response (and appended to later
+  partial-failure messages) instead of an error.
+
 ## [1.1.1] - 2026-09-27
 
 ### Fixed

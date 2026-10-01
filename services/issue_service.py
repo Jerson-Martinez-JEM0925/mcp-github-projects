@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import re
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from clients.gh_cli_client import CLIError
 from core.protocols import GHCLIRunner
@@ -22,10 +22,16 @@ from models.context import GitHubContext
 
 @dataclass(frozen=True, slots=True)
 class CreatedIssue:
-    """Result of a successful issue creation."""
+    """Result of a successful issue creation.
+
+    ``warnings`` lists follow-up steps that failed after the issue already
+    existed (for example, assignees the token may not set). The issue itself
+    was created, so callers must not retry the creation.
+    """
 
     number: int
     url: str
+    warnings: tuple[str, ...] = field(default_factory=tuple)
 
 
 # ── Exceptions ───────────────────────────────────────────────────────────────
@@ -118,8 +124,11 @@ class IssueService:
         for label in normalize_unique(labels):
             args.extend(["--label", label])
 
-        for assignee in normalize_unique(assignees):
-            args.extend(["--assignee", assignee])
+        # Assignees are applied after creation: `gh issue create --assignee`
+        # creates the issue and only then sets assignees, so a permission
+        # error there exits non-zero for an issue that already exists and a
+        # retry would create a duplicate.
+        requested_assignees = normalize_unique(assignees)
 
         if milestone:
             args.extend(["--milestone", milestone])
@@ -137,7 +146,21 @@ class IssueService:
         url = result.stdout.strip().splitlines()[-1].strip()
         number = self._extract_issue_number(url)
 
-        return CreatedIssue(number=number, url=url)
+        warnings: list[str] = []
+        if requested_assignees:
+            try:
+                await self._gh.run([
+                    "issue", "edit", str(number), *self._repo_flag,
+                    "--add-assignee", ",".join(requested_assignees),
+                ])
+            except CLIError as exc:
+                reason = (exc.stderr or str(exc)).strip()
+                warnings.append(
+                    f"Issue #{number} was created, but assignees "
+                    f"{', '.join(requested_assignees)} could not be set: {reason}"
+                )
+
+        return CreatedIssue(number=number, url=url, warnings=tuple(warnings))
 
     async def close(self, issue_number: int) -> None:
         """Close an issue.

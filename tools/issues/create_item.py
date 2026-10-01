@@ -272,6 +272,7 @@ async def create_project_item(
             message=(
                 f"Issue #{issue_number} was created ({issue_url}) but "
                 f"adding it to the project failed: {exc}"
+                + "".join(f" Also: {w}" for w in created_issue.warnings)
             ),
             suggestion=(
                 "The issue exists but is not on the project board. "
@@ -323,6 +324,7 @@ async def create_project_item(
                     f"Issue #{issue_number} was created ({issue_url}) and "
                     f"added to the project (item ID: {item_node_id}), but "
                     f"setting field '{field_name}' failed: {exc}"
+                    + "".join(f" Also: {w}" for w in created_issue.warnings)
                 ),
                 suggestion=(
                     "The issue and project item exist. Retry setting the "
@@ -341,6 +343,8 @@ async def create_project_item(
             "message": (
                 f"Issue #{issue_number} created and added to project "
                 "successfully."
+                + (" Some follow-up steps failed; see warnings." if created_issue.warnings else "")
             ),
+            **({"warnings": list(created_issue.warnings)} if created_issue.warnings else {}),
         },
     ).model_dump()
