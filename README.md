@@ -141,7 +141,7 @@ in the JSON.
 
 ## Tool Catalog
 
-The server registers **129 tools** at `MCP_ACCESS_LEVEL=full` (fewer at `read`/`write`). A category overview — the generated, per-tool catalog is [docs/TOOLS.md](docs/TOOLS.md):
+The server registers **130 tools** at `MCP_ACCESS_LEVEL=full` (fewer at `read`/`write`). A category overview — the generated, per-tool catalog is [docs/TOOLS.md](docs/TOOLS.md):
 
 | Category | What it covers | Representative tools |
 |----------|----------------|----------------------|

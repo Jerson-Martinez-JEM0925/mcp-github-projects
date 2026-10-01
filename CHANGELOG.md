@@ -26,6 +26,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`update_pull_request` tool** (issue #65): updates an existing pull request
+  via the GitHub REST endpoint `PATCH /repos/{owner}/{repo}/pulls/{pull_number}`
+  through the existing `gh` client. Required `pull_number` plus optional
+  `title`, `body`, `base`, `state`, and `maintainer_can_modify`; requires at
+  least one update field, validates `state` (`open`/`closed`), sends only the
+  supplied fields, and returns the PR number, canonical URL, title, head/base,
+  draft/state, and the list of updated fields. Full tool surface is now 130 at
+  `MCP_ACCESS_LEVEL=full`.
+
 ### Fixed
 
 - **`create_project_item` reported "Failed to create issue" for an issue that

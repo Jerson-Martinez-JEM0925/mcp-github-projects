@@ -162,6 +162,7 @@ TOOL_CAPABILITIES: dict[str, FrozenSet[Capability]] = {
     "sync_closed_items_to_done": frozenset({PR, PW}),
     "link_pull_request": frozenset({PRW, IW}),
     "create_pull_request": frozenset({PRW, IW}),
+    "update_pull_request": frozenset({PRW, IW}),
 
     # --- GitHub Actions / checks (issue #32) ---
     "list_workflows": frozenset({AR}),

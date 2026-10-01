@@ -61,7 +61,7 @@ This is the parity concept with `mcp-monday-projects`' `MONDAY_WORKSPACE_ID`.
 | `labels.read` | List repository labels |
 | `labels.write` | Create and modify repository labels |
 | `pull_requests.read` | Read PR details, linked issues, merge status |
-| `pull_requests.write` | Link PRs, close issues on merge |
+| `pull_requests.write` | Create and update PRs, link PRs, close issues on merge |
 | `actions.read` | List workflows and runs, read check runs, commit statuses and job logs |
 | `actions.write` | Re-run workflow runs and dispatch `workflow_dispatch` workflows |
 | `repositories.write` | Create repositories for a user or organization |

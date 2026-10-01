@@ -127,7 +127,7 @@ The ~105 tools group into these categories. A tool's category determines its
 | **fields** | `tools/fields/` | Field/estimate/label/milestone writes | `set_estimate`, `create_label`, `list_labels`, `create_milestone`, `close_milestone`, `list_milestones` |
 | **planning** | `tools/planning/` | Sprints, workflows, release notes, epics | `sprint_planning`, `generate_release_notes`, `create_epic`, `daily_standup`, `sprint_review`, `close_sprint`, `triage_new_issues` |
 | **discovery/bulk** | `tools/bulk/` | Batch operations + search across many items | `bulk_close_issues`, `bulk_update_items`, `search_issues`, `bulk_assign` |
-| **meta** | `tools/meta/` | Reports/stats, PR-create helpers, and the 60-tool capability suite | `get_project_stats`, `get_sprint_summary`, `create_pull_request`, `link_pull_request`, plus `capability_suite.CAPABILITY_TOOL_NAMES` |
+| **meta** | `tools/meta/` | Reports/stats, PR-create helpers, and the 60-tool capability suite | `get_project_stats`, `get_sprint_summary`, `create_pull_request`, `update_pull_request`, `link_pull_request`, plus `capability_suite.CAPABILITY_TOOL_NAMES` |
 
 > The **capability suite** (`tools/meta/capability_suite.py`) holds 60 read/analysis/
 > text-processing tools registered via `CAPABILITY_TOOL_NAMES`. It is a category of its

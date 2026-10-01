@@ -55,6 +55,7 @@ from tools.meta.nice_to_have import (
     get_sprint_summary,
     link_pull_request,
     create_pull_request,
+    update_pull_request,
     bulk_assign,
 )
 from tools.repositories import create_repository
@@ -145,6 +146,7 @@ _ALL_TOOLS: list = [
     get_sprint_summary,
     link_pull_request,
     create_pull_request,
+    update_pull_request,
     create_repository,
     bulk_assign,
     sprint_planning,

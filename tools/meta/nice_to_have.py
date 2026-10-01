@@ -69,6 +69,42 @@ class CreatePullRequestInput(BaseModel):
     )
 
 
+class UpdatePullRequestInput(BaseModel):
+    """Input schema for the update_pull_request tool.
+
+    ``pull_number`` is required; every other field is an optional update and
+    at least one of them must be supplied (enforced in the tool body, so an
+    empty update returns a structured validation error rather than a no-op
+    REST call).
+    """
+
+    pull_number: int = Field(description="Number of the pull request to update")
+    title: Optional[str] = Field(
+        default=None,
+        description="New pull request title",
+        min_length=1,
+        max_length=256,
+    )
+    body: Optional[str] = Field(
+        default=None,
+        description="New pull request body / description (supports multiline)",
+        max_length=65536,
+    )
+    base: Optional[str] = Field(
+        default=None,
+        description="New base branch to retarget the pull request to",
+        min_length=1,
+    )
+    state: Optional[str] = Field(
+        default=None,
+        description="New pull request state: 'open' or 'closed'",
+    )
+    maintainer_can_modify: Optional[bool] = Field(
+        default=None,
+        description="Whether maintainers can modify the pull request branch",
+    )
+
+
 class BulkAssignInput(BaseModel):
     """Input schema for the bulk_assign tool."""
 
@@ -364,6 +400,110 @@ async def create_pull_request(params: CreatePullRequestInput) -> dict:
     except Exception as exc:
         logger.error("Error in create_pull_request: %s", exc)
         return handle_tool_error(exc, context="Create pull request failed")
+
+
+async def update_pull_request(params: UpdatePullRequestInput) -> dict:
+    """Update an existing pull request via the GitHub REST API.
+
+    Calls `PATCH /repos/{owner}/{repo}/pulls/{pull_number}` (through
+    `gh api`) using the owner/repo resolved from the GH_PROJECT_* env
+    context, mirroring create_pull_request. Only the fields supplied are
+    sent, so unrelated attributes are left untouched. At least one optional
+    field (title, body, base, state, maintainer_can_modify) must be
+    provided; an empty update returns a validation error without calling
+    GitHub.
+
+    Args:
+        params: Input containing pull_number plus the optional fields to
+            change.
+
+    Returns:
+        ToolSuccess with the PR number, canonical URL, title, head/base,
+        draft/state, and the list of fields that were updated; or a
+        structured error envelope on validation/provider failure.
+    """
+    try:
+        # Collect only the fields the caller actually supplied.
+        updates: dict[str, object] = {}
+        if params.title is not None:
+            updates["title"] = params.title
+        if params.body is not None:
+            updates["body"] = params.body
+        if params.base is not None:
+            updates["base"] = params.base
+        if params.state is not None:
+            updates["state"] = params.state
+        if params.maintainer_can_modify is not None:
+            updates["maintainer_can_modify"] = params.maintainer_can_modify
+
+        if not updates:
+            return build_error_response(
+                error_type="validation",
+                message="Provide at least one field to update.",
+                suggestion=(
+                    "Pass at least one of title, body, base, state, or "
+                    "maintainer_can_modify."
+                ),
+            )
+
+        if params.state is not None and params.state not in ("open", "closed"):
+            return build_error_response(
+                error_type="validation",
+                message=f"Invalid state '{params.state}'.",
+                suggestion="state must be either 'open' or 'closed'.",
+            )
+
+        await get_service_factory().ensure_auth()
+        settings = get_settings()
+        repo = f"{settings.org_name}/{settings.repo_name}"
+        gh_client = get_service_factory().gh()
+
+        api_args = [
+            "api",
+            "--method", "PATCH",
+            f"repos/{repo}/pulls/{params.pull_number}",
+        ]
+        for key in ("title", "body", "base", "state"):
+            if key in updates:
+                api_args.extend(["-f", f"{key}={updates[key]}"])
+        if "maintainer_can_modify" in updates:
+            api_args.extend([
+                "-F",
+                f"maintainer_can_modify={'true' if updates['maintainer_can_modify'] else 'false'}",
+            ])
+
+        patch_result = await gh_client.run(api_args)
+        pr_data = json.loads(patch_result.stdout)
+        pr_number = pr_data.get("number", params.pull_number)
+        pr_url = pr_data.get("html_url", "")
+
+        data: dict = {
+            "pr_number": pr_number,
+            "pr_url": pr_url,
+            "title": pr_data.get("title"),
+            "head": (pr_data.get("head") or {}).get("ref"),
+            "base": (pr_data.get("base") or {}).get("ref"),
+            "draft": pr_data.get("draft"),
+            "state": pr_data.get("state"),
+            "updated_fields": sorted(updates.keys()),
+            "message": f"PR #{pr_number} updated: {pr_url}",
+        }
+
+        return ToolSuccess(data=data).model_dump()
+
+    except CLIError as exc:
+        logger.error("CLI error in update_pull_request: %s", exc)
+        return build_error_response(
+            error_type="internal",
+            message=f"Failed to update PR: {exc.stderr.strip()}",
+            suggestion=(
+                "Verify the pull request number exists, the base branch is "
+                "valid, and the token has pull-request write scope."
+            ),
+        )
+    except Exception as exc:
+        logger.error("Error in update_pull_request: %s", exc)
+        return handle_tool_error(exc, context="Update pull request failed")
 
 
 async def bulk_assign(params: BulkAssignInput) -> dict:

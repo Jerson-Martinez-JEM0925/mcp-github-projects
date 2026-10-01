@@ -22,7 +22,7 @@ The main categories below; the extended capability suite (60 tools), repository/
 | Hierarchy | add_sub_issue, remove_sub_issue, list_sub_issues | 3 |
 | Milestones | create_milestone, close_milestone, list_milestones | 3 |
 | Labels | create_label, list_labels | 2 |
-| Stats & Planning | get_project_stats, get_sprint_summary, sprint_planning, generate_release_notes, link_pull_request, create_pull_request | 6 |
+| Stats & Planning | get_project_stats, get_sprint_summary, sprint_planning, generate_release_notes, link_pull_request, create_pull_request, update_pull_request | 7 |
 | CI / Actions | list_workflows, list_workflow_runs, get_workflow_run, get_pr_checks, get_job_logs, rerun_workflow_run, dispatch_workflow | 7 |
 | Workflows | complete_issue, daily_standup, sprint_review, triage_new_issues, escalate_overdue, handoff_issue, create_epic, close_sprint, blocked_report | 9 |
 
@@ -414,6 +414,21 @@ issue by reusing `link_pull_request` (pass `link_to_issue`).
 ```
 Input:  { "title": "Add create_pull_request tool", "head": "feat/create-pull-request-tool", "base": "main", "body": "Closes #7", "draft": false, "link_to_issue": 7 }
 Output: { pr_number, pr_url, title, head, base, draft, state, message, link_result? }
+```
+
+### update_pull_request
+
+Updates an existing pull request via the GitHub REST API
+(`PATCH /repos/{owner}/{repo}/pulls/{pull_number}`). Owner/repo come from the
+`GH_PROJECT_*` env context. `pull_number` is required; `title`, `body`, `base`,
+`state`, and `maintainer_can_modify` are optional and **at least one** must be
+supplied (an empty update returns a validation error). Only the supplied fields
+are sent, so unrelated attributes are left untouched. `state`, when given, must
+be `open` or `closed`.
+
+```
+Input:  { "pull_number": 238, "title": "Corrected title", "body": "Line one.\n\nCloses #65", "maintainer_can_modify": true }
+Output: { pr_number, pr_url, title, head, base, draft, state, updated_fields, message }
 ```
 
 ### sync_closed_items_to_done
