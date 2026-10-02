@@ -1,6 +1,6 @@
 # MCP GitHub Project Management — Usage Guide
 
-Usage guide for the GitHub Project Management MCP server, with examples per category. The authoritative, generated list of every tool (126 at `MCP_ACCESS_LEVEL=full`) with its access tier and capabilities is [TOOLS.md](TOOLS.md).
+Usage guide for the GitHub Project Management MCP server, with examples per category. The authoritative, generated list of every tool (140 at `MCP_ACCESS_LEVEL=full`) with its access tier and capabilities is [TOOLS.md](TOOLS.md).
 
 ## Project Configuration
 
@@ -24,6 +24,7 @@ The main categories below; the extended capability suite (60 tools), repository/
 | Labels | create_label, list_labels | 2 |
 | Stats & Planning | get_project_stats, get_sprint_summary, sprint_planning, generate_release_notes, link_pull_request, create_pull_request, update_pull_request | 7 |
 | CI / Actions | list_workflows, list_workflow_runs, get_workflow_run, get_pr_checks, get_job_logs, rerun_workflow_run, dispatch_workflow | 7 |
+| Response quality | repository_health_summary, pull_request_lifecycle_summary, issue_activity_digest, workflow_run_diagnostic_summary, check_conclusion_summary, label_milestone_consistency_report, issue_metadata_consistency_report, issue_closure_readiness_report, paginated_issue_page, response_diagnostics | 10 |
 | Workflows | complete_issue, daily_standup, sprint_review, triage_new_issues, escalate_overdue, handoff_issue, create_epic, close_sprint, blocked_report | 9 |
 
 ---

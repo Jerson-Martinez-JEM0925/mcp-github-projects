@@ -83,6 +83,7 @@ from tools.pull_requests.pr_issue_lifecycle import (
 )
 from tools.meta import capability_suite
 from tools.ci.actions import CI_TOOLS
+from tools.quality import QUALITY_TOOLS
 from tools.projects.board_structure import BOARD_STRUCTURE_TOOLS
 from tools.deletes import (
     delete_project_item,
@@ -185,6 +186,9 @@ _ALL_TOOLS.extend(CI_TOOLS)
 
 # Board structure: single-select options and views (issue #26).
 _ALL_TOOLS.extend(BOARD_STRUCTURE_TOOLS)
+
+# Response-quality and automation diagnostics.
+_ALL_TOOLS.extend(QUALITY_TOOLS)
 
 # Extend with the 60-tool capability suite (dynamically-defined functions).
 _ALL_TOOLS.extend(

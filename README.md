@@ -12,8 +12,8 @@ labels, sub-issues, and full sprint/planning workflows. Built with **Python 3.12
 and **FastMCP 3.x**, it speaks **stdio JSON-RPC** and runs entirely inside a
 **standalone Docker container** — no host toolchain required beyond Docker.
 
-The server exposes **100+ tools**: ~40 operational primitives plus a suite of ~60
-higher-level capabilities for reporting, planning, roadmaps, and automation.
+The server exposes **140 tools**: operational primitives, CI integration,
+repository/project quality reports, and higher-level planning capabilities.
 
 ---
 
@@ -39,6 +39,7 @@ higher-level capabilities for reporting, planning, roadmaps, and automation.
   ([docs/CAPABILITIES.md](docs/CAPABILITIES.md)) so you can scope tokens tightly.
 - **Hardened runtime** — bounded timeouts/retries, atomic owner-only metadata
   cache, target-namespaced isolation, and token redaction in all diagnostics.
+- **Response-quality diagnostics** — bounded repository health, issue/PR lifecycle, CI conclusions, metadata consistency, closure readiness, pagination, and safe target diagnostics for automation workers.
 - **Multi-target profiles** — manage several boards from one install via named
   `profiles/*.env` files.
 

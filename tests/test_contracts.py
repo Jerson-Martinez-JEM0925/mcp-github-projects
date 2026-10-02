@@ -385,7 +385,7 @@ class TestStableToolSchemas:
         contracts.sort(key=lambda item: item["name"])
         canonical = json.dumps(contracts, sort_keys=True, separators=(",", ":"), default=str)
         digest = hashlib.sha256(canonical.encode()).hexdigest()
-        assert digest == "50a7965ba9444cd691822010bb058101d3a30da6d8032a17feb12516d66fd1f1", (
+        assert digest == "f5a66344c7fcb4081b4e3d7ca07bd19a6d13bd43b30ae1fd66c6f407b5bbb617", (
             f"Stable tool schema digest changed: {digest}. "
             "Update intentionally and document the protocol change."
         )

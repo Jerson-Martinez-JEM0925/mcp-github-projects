@@ -173,6 +173,18 @@ TOOL_CAPABILITIES: dict[str, FrozenSet[Capability]] = {
     "rerun_workflow_run": frozenset({AW}),
     "dispatch_workflow": frozenset({AW}),
 
+    # --- Response quality and automation diagnostics ---
+    "repository_health_summary": frozenset({IR}),
+    "pull_request_lifecycle_summary": frozenset({PRR}),
+    "issue_activity_digest": frozenset({IR, CR}),
+    "workflow_run_diagnostic_summary": frozenset({AR}),
+    "check_conclusion_summary": frozenset({AR, PRR}),
+    "label_milestone_consistency_report": frozenset({IR, LR, PLR}),
+    "issue_metadata_consistency_report": frozenset({IR}),
+    "issue_closure_readiness_report": frozenset({IR, PRR}),
+    "paginated_issue_page": frozenset({IR}),
+    "response_diagnostics": frozenset(),
+
     # --- Permanent delete (issue #34) — exposed only at MCP_ACCESS_LEVEL=full ---
     "delete_project_item": frozenset({PW}),
     "delete_issue": frozenset({IW}),

@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clarified in `docs/HARDENING_200.md` that completed architecture items are
   applied and remaining entries are backlog, not missing release functionality.
 
+- **Response-quality diagnostics:** added ten read-only tools for repository health, PR lifecycle, issue activity, workflow diagnostics, check conclusions, label/milestone consistency, issue metadata, closure readiness, explicit pagination, and safe target diagnostics. All outputs are bounded and automation-friendly.
 ## [Unreleased]
 
 ### Added
