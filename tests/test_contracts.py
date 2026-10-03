@@ -385,7 +385,29 @@ class TestStableToolSchemas:
         contracts.sort(key=lambda item: item["name"])
         canonical = json.dumps(contracts, sort_keys=True, separators=(",", ":"), default=str)
         digest = hashlib.sha256(canonical.encode()).hexdigest()
-        assert digest == "f5a66344c7fcb4081b4e3d7ca07bd19a6d13bd43b30ae1fd66c6f407b5bbb617", (
+        # Rebaselined for fastmcp 4.0.9. The predecessor value under fastmcp
+        # 3.2.0 was
+        # f5a66344c7fcb4081b4e3d7ca07bd19a6d13bd43b30ae1fd66c6f407b5bbb617,
+        # i.e. the digest already covering the response-quality tools, so this
+        # move isolates the dependency bump from any tool addition.
+        #
+        # The change is documentation-only. It was verified field by field
+        # across all 140 tools, by dumping both contract sets and diffing them,
+        # before this digest was moved:
+        #   * no tool added, removed or renamed (140 -> 140);
+        #   * output_schema byte-identical for every tool;
+        #   * no parameter added, removed, retyped, or moved between required
+        #     and optional, in any tool;
+        #   * 44 tool descriptions changed because fastmcp 4 no longer appends
+        #     the Google-style "Args:"/"Returns:" docstring sections to the
+        #     tool description, having parsed them instead;
+        #   * 3 input schemas (create_project_item, discover_ids, edit_issue)
+        #     gained per-parameter "description" keys from those same parsed
+        #     docstrings -- purely additive.
+        # Callers therefore see the same contract with better documentation.
+        # Do NOT update this value to silence a failure: re-run the same
+        # field-by-field comparison first and record the outcome in CHANGELOG.md.
+        assert digest == "0a07cf52f6be848eb4e89491d2aee9de5d4da3d3873e11c85c80e0eb94e35dbf", (
             f"Stable tool schema digest changed: {digest}. "
             "Update intentionally and document the protocol change."
         )

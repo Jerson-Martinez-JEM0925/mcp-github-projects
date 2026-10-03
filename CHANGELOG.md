@@ -38,8 +38,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   draft/state, and the list of updated fields. Full tool surface is now 130 at
   `MCP_ACCESS_LEVEL=full`.
 
+### Changed
+
+- **Consolidated the ten open Dependabot updates into one change.** Runtime:
+  `fastmcp` 3.2.0 → 4.0.9, `pydantic` 2.11.7 → 2.13.5, `pydantic-settings`
+  2.8.1 → 2.15.0 (`httpx` unchanged at 0.28.1). Tests: `pytest` 8.4.1 → 9.1.1,
+  `pytest-asyncio` 1.1.0 → 1.4.0. Pinned actions: `github/codeql-action`
+  (`init` and `analyze`) v4.37.7 → v4.38.2, `actions/download-artifact`
+  v4.3.0 → v8.0.1 (both call sites), `crazy-max/ghaction-github-labeler`
+  v5.0.0 → v6.0.0, `zizmorcore/zizmor-action` v0.6.2 → v0.6.4. Every action
+  stays pinned by commit SHA; no pin was relaxed to a tag or branch.
+- **Rebaselined the stable tool-schema digest for fastmcp 4.** The frozen
+  digest in `tests/test_contracts.py` moved because fastmcp 4 parses the
+  Google-style docstring instead of appending it verbatim. Verified field by
+  field across all 140 tools: no tool added, removed or renamed; every
+  `output_schema` byte-identical; 44 descriptions no longer carry the
+  `Args:`/`Returns:` sections; and 3 input schemas (`create_project_item`,
+  `discover_ids`, `edit_issue`) gained per-parameter `description` keys from
+  those parsed docstrings. The change is purely additive documentation — no
+  parameter was added, removed, retyped, or moved between required and
+  optional — so the contract callers depend on is unchanged.
+
 ### Fixed
 
+- **Corrected a misleading action pin comment.** `labels-sync.yaml` pinned
+  `crazy-max/ghaction-github-labeler@de749cf` but annotated it `# v5.3.0`;
+  that commit is in fact **v5.0.0** (v5.3.0 is `24d110a`). The comment now
+  matches the SHA it documents.
 - **`create_project_item` reported "Failed to create issue" for an issue that
   already existed.** `gh issue create --assignee` creates the issue and only
   then sets assignees; when the token may not assign (e.g. a fork contributor
