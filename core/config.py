@@ -150,6 +150,28 @@ class GitHubProjectSettings(BaseSettings):
         max_length=255,
         description="Streamable HTTP endpoint path.",
     )
+    auth_mode: str | None = Field(
+        default=None,
+        validation_alias="MCP_AUTH_MODE",
+        description="HTTP authentication mode: 'request' or guarded shared 'env'.",
+    )
+    allow_shared_token: bool = Field(
+        default=False,
+        validation_alias="MCP_ALLOW_SHARED_TOKEN",
+        description="Explicitly allow the process-wide token for HTTP env mode.",
+    )
+    client_key: str = Field(
+        default="",
+        validation_alias="MCP_CLIENT_KEY",
+        repr=False,
+        description="Optional shared client key required in X-MCP-Client-Key.",
+    )
+    allowed_token_prefixes: str | None = Field(
+        default=None,
+        validation_alias="MCP_ALLOWED_TOKEN_PREFIXES",
+        repr=False,
+        description="Comma-separated request-token prefixes; empty disables filtering.",
+    )
 
     # ── Access level & scope lock (issue #34) ────────────────────
     # access_level reads MCP_ACCESS_LEVEL (NO GH_PROJECT_ prefix — parity with
@@ -289,6 +311,24 @@ class GitHubProjectSettings(BaseSettings):
         if self.http_path in ("/healthz", "/readyz"):
             raise ValueError("MCP_HTTP_PATH is reserved for health endpoints.")
 
+        requested_auth_mode = (self.auth_mode or "").strip().lower()
+        auth_mode = requested_auth_mode or (
+            "request" if transport == "streamable-http" else "env"
+        )
+        if auth_mode not in ("env", "request"):
+            raise ValueError(
+                "MCP_AUTH_MODE must be 'env' or 'request' "
+                f"(got '{self.auth_mode}')."
+            )
+        if transport == "stdio" and auth_mode == "request":
+            raise ValueError("MCP_AUTH_MODE=request requires MCP_TRANSPORT=streamable-http.")
+        if transport == "streamable-http" and auth_mode == "env" and not self.allow_shared_token:
+            raise ValueError(
+                "MCP_AUTH_MODE=env for streamable-http requires "
+                "MCP_ALLOW_SHARED_TOKEN=true."
+            )
+        self.auth_mode = auth_mode
+
         # Validate & normalize the access level (read | write | full).
         access = (self.access_level or "write").strip().lower()
         if access not in ("read", "write", "full"):
@@ -313,6 +353,17 @@ class GitHubProjectSettings(BaseSettings):
                 "Set them via environment variables or .env file."
             )
         return self
+
+    def token_prefixes(self) -> tuple[str, ...]:
+        """Return normalized allowed request-token prefixes.
+
+        GitHub defaults to user and fine-grained user tokens. An explicitly
+        empty environment variable disables prefix filtering.
+        """
+        raw = self.allowed_token_prefixes
+        if raw is None:
+            raw = "ghu_,github_pat_"
+        return tuple(prefix.strip() for prefix in raw.split(",") if prefix.strip())
 
 
 @lru_cache

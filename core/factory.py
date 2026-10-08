@@ -85,12 +85,13 @@ class ServiceFactory:
         return GraphQLClient(token=await self.token())
 
     def gh(self) -> GHCLIRunner:
-        """Return a ``gh`` CLI runner (``gh`` reads the token from the env)."""
+        """Return a CLI runner with the active request-scoped credential."""
         if self._gh_override is not None:
             return self._gh_override
         from clients.gh_cli_client import GHCLIClient
+        from models.context import GitHubContext
 
-        return GHCLIClient()
+        return GHCLIClient(context=GitHubContext.from_settings())
 
     def cache_manager(self) -> CacheManager:
         """Return the project-metadata cache manager."""

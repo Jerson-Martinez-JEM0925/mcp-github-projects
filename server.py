@@ -28,6 +28,7 @@ from core.auth import resolve_token, validate_scopes
 from core.access import AccessLevel, is_exposed
 from core.config import get_settings, load_settings_or_exit
 from core.context import RequestContextFilter, with_request_context
+from core.http_auth import RequestBearerAuthMiddleware
 from core.version import VERSION
 from tools.projects.archive import (
     archive_project_item,
@@ -137,6 +138,13 @@ def create_http_app() -> Starlette:
         json_response=True,
         stateless_http=True,
     )
+    if settings.auth_mode == "request":
+        app.add_middleware(
+            RequestBearerAuthMiddleware,
+            protected_path=settings.http_path,
+            client_key=settings.client_key,
+            allowed_prefixes=settings.token_prefixes(),
+        )
     app.routes.insert(0, Route("/readyz", endpoint=_readyz, methods=["GET"]))
     app.routes.insert(0, Route("/healthz", endpoint=_healthz, methods=["GET"]))
     return app
@@ -369,7 +377,8 @@ def main() -> None:
     """
     _configure_logging()
     settings = get_settings()
-    asyncio.run(_validate_auth_on_startup())
+    if settings.auth_mode == "env":
+        asyncio.run(_validate_auth_on_startup())
     if settings.transport == "stdio":
         mcp.run(transport="stdio")
     else:

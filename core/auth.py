@@ -11,8 +11,14 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+from contextlib import contextmanager
+from contextvars import ContextVar, Token
+from collections.abc import Iterator
 
 import httpx
+
+from core.config import get_settings
+from core.hardening import request_secret_scope
 
 REQUIRED_SCOPES: frozenset[str] = frozenset({"repo", "project", "read:org"})
 
@@ -37,6 +43,23 @@ _SCOPE_HIERARCHY: dict[str, frozenset[str]] = {
 
 _GITHUB_API_URL = "https://api.github.com"
 _SCOPE_VALIDATION_TIMEOUT = 10.0
+_REQUEST_TOKEN: ContextVar[str | None] = ContextVar("mcp_request_token", default=None)
+
+
+@contextmanager
+def request_token_scope(token: str) -> Iterator[None]:
+    """Bind one HTTP bearer token and its redaction secret to this context."""
+    token_handle: Token[str | None] = _REQUEST_TOKEN.set(token)
+    try:
+        with request_secret_scope(token):
+            yield
+    finally:
+        _REQUEST_TOKEN.reset(token_handle)
+
+
+def current_request_token() -> str | None:
+    """Return the bearer token for the current request, if one is bound."""
+    return _REQUEST_TOKEN.get()
 
 
 def _expand_scopes(granted: frozenset[str]) -> frozenset[str]:
@@ -60,19 +83,27 @@ def _expand_scopes(granted: frozenset[str]) -> frozenset[str]:
 
 
 async def resolve_token() -> str:
-    """Resolve GitHub token from environment variables or gh CLI.
+    """Resolve the credential without falling back in request-auth mode.
 
-    Resolution order:
-    1. GITHUB_TOKEN environment variable
-    2. GH_TOKEN environment variable
-    3. `gh auth token` (extract token from authenticated session)
+    In stateless HTTP request mode, the bearer token must already be bound by
+    the HTTP middleware. Environment variables and the GitHub CLI are never
+    consulted in that mode. Stdio and explicitly guarded shared-token HTTP
+    mode retain the legacy environment/CLI resolution order.
 
     Returns:
         The resolved token string.
 
     Raises:
-        SystemExit: If no valid token is found (exits with code 1, message to stderr).
+        ValueError: If request mode has no bound request credential.
+        SystemExit: If env-mode has no valid token (exits with code 1).
     """
+    request_token = current_request_token()
+    settings = get_settings()
+    if settings.auth_mode == "request":
+        if request_token:
+            return request_token
+        raise ValueError("No request credential is bound to this operation")
+
     # 1. Check GITHUB_TOKEN
     token = os.environ.get("GITHUB_TOKEN", "").strip()
     if token:

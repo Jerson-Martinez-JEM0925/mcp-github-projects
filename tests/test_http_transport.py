@@ -76,6 +76,7 @@ def test_http_app_health_and_mcp_protocol(monkeypatch: pytest.MonkeyPatch) -> No
                 headers = {
                     "Accept": "application/json, text/event-stream",
                     "Content-Type": "application/json",
+                    "Authorization": "Bearer ghu_contract_test",
                 }
                 initialize = await client.post(
                     "/mcp",
