@@ -84,12 +84,44 @@ async def test_check_conclusion_summary_treats_no_checks_as_none() -> None:
 
 @pytest.mark.anyio
 async def test_paginated_issue_page_exposes_page_and_has_more() -> None:
-    gh = RoutingGH({f"{REPO}/issues": [{"number": 1, "title": "One", "state": "open"}]})
+    class SearchGH(RoutingGH):
+        async def run(self, args: list[str]) -> CommandResult:
+            self.calls.append(args)
+            return CommandResult(stdout=json.dumps({"total_count": 3, "items": [{"number": 1, "title": "One", "state": "open"}]}), stderr="", return_code=0)
+
+    gh = SearchGH({})
     with use_service_factory(gh_client=gh):
         result = await paginated_issue_page(PageInput(page=2, per_page=1))
     assert result["data"]["page"] == 2
+    assert result["data"]["total_count"] == 3
     assert result["data"]["has_more"] is True
     assert result["data"]["issues"][0]["number"] == 1
+    assert "q=repo:octo-org/octo-repo is:issue is:open" in gh.calls[0]
+
+
+@pytest.mark.anyio
+async def test_paginated_issue_page_is_not_shortened_by_pull_requests() -> None:
+    """Regression: the REST issues endpoint mixes PRs in, so a page of 5
+    came back with 2 issues and has_more=false. Search with is:issue does not."""
+    class SearchGH(RoutingGH):
+        async def run(self, args: list[str]) -> CommandResult:
+            self.calls.append(args)
+            items = [{"number": n, "title": f"I{n}", "state": "open"} for n in range(5)]
+            return CommandResult(stdout=json.dumps({"total_count": 400, "items": items}), stderr="", return_code=0)
+
+    gh = SearchGH({})
+    with use_service_factory(gh_client=gh):
+        result = await paginated_issue_page(PageInput(state="all", per_page=5, query="label:adr"))
+    assert result["data"]["count"] == 5
+    assert result["data"]["has_more"] is True
+    assert "q=repo:octo-org/octo-repo is:issue label:adr" in gh.calls[0]
+
+
+@pytest.mark.anyio
+async def test_paginated_issue_page_refuses_repo_qualifier() -> None:
+    with use_service_factory(gh_client=RoutingGH({})):
+        result = await paginated_issue_page(PageInput(query="repo:other/repo bug"))
+    assert result["ok"] is False
 
 
 @pytest.mark.anyio

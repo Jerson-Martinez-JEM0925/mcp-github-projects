@@ -25,7 +25,7 @@ from starlette.routing import Route
 
 from core.arguments import accept_flat_or_wrapped
 from core.auth import resolve_token, validate_scopes
-from core.access import AccessLevel, is_exposed
+from core.access import AccessLevel, ToolAccess, classify, is_exposed
 from core.config import get_settings, load_settings_or_exit
 from core.context import RequestContextFilter, with_request_context
 from core.http_auth import RequestBearerAuthMiddleware
@@ -99,6 +99,8 @@ from tools.deletes import (
     delete_milestone,
 )
 from tools.meta.server_info import server_info
+from tools.pull_requests.listing import PULL_REQUEST_LISTING_TOOLS
+from tools.repository_content import REPOSITORY_CONTENT_TOOLS
 from tools.project_provisioning import (
     create_project,
     update_project,
@@ -108,6 +110,25 @@ from tools.project_provisioning import (
 )
 
 # ── FastMCP Server Instance ──────────────────────────────────────────────────
+
+# Sent in the MCP initialize result; clients such as LibreChat
+# (`serverInstructions: true`) inject it into the model's system prompt so the
+# model calls tools instead of answering from memory. MCP_SERVER_INSTRUCTIONS
+# replaces it (parity with mcp-monday-projects).
+DEFAULT_INSTRUCTIONS = """\
+This server is the source of truth for the configured GitHub repository and its Projects V2 board.
+ALWAYS call tools to answer questions about the repository, its documentation, policies, standards, ADRs, issues, pull requests, milestones, labels or the board; never answer from memory or invent repository data.
+For "what does the documentation/governance say" questions: find files with search_repository_code or list_repository_directory(recursive=true, name_contains=...), read them with get_repository_file, and cite the returned URLs. Say clearly when the repository does not cover the topic.
+For lists use paginated_issue_page or list_pull_requests (state=merged for merged PRs) and report total_count/has_more; say when results are truncated.
+Prefer read tools. Before any write, describe the change and perform it only when the user asked for it. Files change only through create_branch + commit_files on an allowed branch followed by create_pull_request; never the default branch.
+If a tool is missing, refused or fails, say so instead of guessing.
+"""
+
+
+def _instructions() -> str:
+    custom = get_settings().server_instructions.strip()
+    return custom or DEFAULT_INSTRUCTIONS
+
 
 mcp = FastMCP("github-project-management", version=VERSION)
 
@@ -247,6 +268,11 @@ _ALL_TOOLS.extend(BOARD_STRUCTURE_TOOLS)
 # Response-quality and automation diagnostics.
 _ALL_TOOLS.extend(QUALITY_TOOLS)
 
+# Repository contents (read files/folders, code search, governed commits) and
+# pull request listing/detail.
+_ALL_TOOLS.extend(REPOSITORY_CONTENT_TOOLS)
+_ALL_TOOLS.extend(PULL_REQUEST_LISTING_TOOLS)
+
 # Extend with the 60-tool capability suite (dynamically-defined functions).
 _ALL_TOOLS.extend(
     getattr(capability_suite, _name) for _name in capability_suite.CAPABILITY_TOOL_NAMES
@@ -261,13 +287,16 @@ def _register_tools() -> dict[str, int]:
     which is how it is classified in core.access.
     """
     level = AccessLevel.parse(get_settings().access_level)
+    allowlist = get_settings().write_tool_allowlist_names()
+    known = {_tool_name(fn) for fn in _ALL_TOOLS}
+    unknown = sorted(allowlist - known)
+    if unknown:
+        raise ValueError(f"MCP_WRITE_TOOL_ALLOWLIST contains unknown tools: {', '.join(unknown)}")
     registered = 0
     hidden = 0
     for _fn in _ALL_TOOLS:
-        # FastMCP registers a tool under the function's __name__; the workflow
-        # complete_issue is imported under an alias, so resolve its real name.
-        tool_name = "complete_issue" if _fn is complete_issue_workflow else _fn.__name__
-        if is_exposed(tool_name, level):
+        tool_name = _tool_name(_fn)
+        if is_exposed(tool_name, level) and _allowed_by_write_allowlist(tool_name, allowlist):
             # Each call runs in its own RequestContext (correlation ID in logs
             # and error envelopes), and accepts flat args or a legacy
             # {"params": {...}} wrapper on every tool (#4).
@@ -276,6 +305,19 @@ def _register_tools() -> dict[str, int]:
         else:
             hidden += 1
     return {"level": level.value, "registered": registered, "hidden": hidden}
+
+
+def _tool_name(fn) -> str:
+    """FastMCP registers a tool under the function's __name__; the workflow
+    complete_issue is imported under an alias, so resolve its real name."""
+    return "complete_issue" if fn is complete_issue_workflow else fn.__name__
+
+
+def _allowed_by_write_allowlist(tool_name: str, allowlist: frozenset[str]) -> bool:
+    """MCP_WRITE_TOOL_ALLOWLIST: when set, only listed write/delete tools stay."""
+    if not allowlist or classify(tool_name) is ToolAccess.READ:
+        return True
+    return tool_name in allowlist
 
 
 def _build_tool(fn, tool_name: str) -> FunctionTool:
@@ -295,6 +337,7 @@ if __name__ == "__main__":
     # time, so validate them first and fail fast without a traceback (#3).
     load_settings_or_exit()
 
+mcp.instructions = _instructions()
 _REGISTRATION = _register_tools()
 
 

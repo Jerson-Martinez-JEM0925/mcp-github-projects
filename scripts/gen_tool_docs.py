@@ -35,6 +35,7 @@ SECTIONS = {
     "ci": "CI / GitHub Actions",
     "planning": "Planning and workflows",
     "repositories": "Repositories",
+    "repository_content": "Repository contents and governed commits",
     "deletes": "Permanent deletes (MCP_ACCESS_LEVEL=full)",
     "capability_suite": "Extended capability suite",
 }
