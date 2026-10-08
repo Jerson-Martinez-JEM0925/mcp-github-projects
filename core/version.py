@@ -5,4 +5,4 @@ handshake advertises it, and ``scripts/release_notes.py`` refuses a release
 tag that does not match it. Bump it in the release PR (see docs/RELEASING.md).
 """
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"

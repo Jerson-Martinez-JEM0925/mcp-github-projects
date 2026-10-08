@@ -285,7 +285,7 @@ docker run --rm -i \
 ```
 
 <a id="ide-integration"></a>
-### HTTP transport (local-only in this PR)
+### HTTP transport
 
 Set `MCP_TRANSPORT=streamable-http` to run the server over FastMCP's stateless
 Streamable HTTP transport. The default remains stdio. HTTP binds to
@@ -346,7 +346,7 @@ mcpServers:
         sensitive: true
 ```
 
-The `oauth` block for GitHub App user access tokens will be documented in PR 4.
+The `oauth` block for GitHub App user access tokens will be documented separately.
 The HTTP endpoint supports MCP `initialize` and `tools/list` using JSON
 responses. Existing stdio clients and the stdio startup/authentication path are
 unchanged.

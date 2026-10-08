@@ -5,30 +5,28 @@ All notable changes to the GitHub Project Management MCP Server will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.2.0] - 2026-09-28
-
-### Added
-
-- **Stable contract guard:** `tests/test_contracts.py` freezes the public tool
-  name, description, input-schema, and output-schema digest.
-- **Repository quality workflows:** PR title/branch checks, YAML and shell
-  linting, security audits, declarative label sync, Dependabot, and optional
-  documentation-to-Wiki synchronization.
-- **Stability policy:** compatibility and deprecation rules are documented in
-  `docs/STABILITY.md`.
-
-### Changed
-
-- Corrected public generated headings and comments to English while retaining
-  Spanish heading parsing for existing issue bodies.
-- Clarified in `docs/HARDENING_200.md` that completed architecture items are
-  applied and remaining entries are backlog, not missing release functionality.
-
-- **Response-quality diagnostics:** added ten read-only tools for repository health, PR lifecycle, issue activity, workflow diagnostics, check conclusions, label/milestone consistency, issue metadata, closure readiness, explicit pagination, and safe target diagnostics. All outputs are bounded and automation-friendly.
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-08
+
 ### Added
 
+- **Stateless Streamable HTTP transport** (#87): `MCP_TRANSPORT=streamable-http`
+  serves MCP at `MCP_HTTP_PATH` (default `/mcp`) on `MCP_HTTP_HOST`/`MCP_HTTP_PORT`
+  (default `127.0.0.1:8080`) with JSON responses and no in-memory sessions, plus
+  credential-free `GET /healthz` and `GET /readyz` probes. stdio remains the
+  default and is unchanged.
+- **Per-request bearer credentials for HTTP** (#88): `MCP_AUTH_MODE` defaults to
+  `request` over HTTP. Every MCP request must carry `Authorization: Bearer
+  <token>`; the token is bound to that request only (`contextvars`) and is never
+  copied to the process environment, a global cache or logs. Request mode is
+  fail-closed: it never falls back to `GITHUB_TOKEN`, `GH_TOKEN` or
+  `gh auth token`. Optional `MCP_CLIENT_KEY` (`X-MCP-Client-Key`, constant-time
+  comparison) and `MCP_ALLOWED_TOKEN_PREFIXES` (default `ghu_,github_pat_`,
+  rejecting classic `ghp_` tokens). Shared-token HTTP requires
+  `MCP_ALLOW_SHARED_TOKEN=true`. Failures return a generic `401` with
+  `WWW-Authenticate: Bearer`.
+- **Response-quality diagnostics:** added ten read-only tools for repository health, PR lifecycle, issue activity, workflow diagnostics, check conclusions, label/milestone consistency, issue metadata, closure readiness, explicit pagination, and safe target diagnostics. All outputs are bounded and automation-friendly.
 - **`update_pull_request` tool** (issue #65): updates an existing pull request
   via the GitHub REST endpoint `PATCH /repos/{owner}/{repo}/pulls/{pull_number}`
   through the existing `gh` client. Required `pull_number` plus optional
@@ -73,6 +71,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   --add-assignee` call after creation, and a failure there is returned as a
   `warnings` entry on the successful response (and appended to later
   partial-failure messages) instead of an error.
+
+## [1.2.0] - 2026-09-28
+
+### Added
+
+- **Stable contract guard:** `tests/test_contracts.py` freezes the public tool
+  name, description, input-schema, and output-schema digest.
+- **Repository quality workflows:** PR title/branch checks, YAML and shell
+  linting, security audits, declarative label sync, Dependabot, and optional
+  documentation-to-Wiki synchronization.
+- **Stability policy:** compatibility and deprecation rules are documented in
+  `docs/STABILITY.md`.
+
+### Changed
+
+- Corrected public generated headings and comments to English while retaining
+  Spanish heading parsing for existing issue bodies.
+- Clarified in `docs/HARDENING_200.md` that completed architecture items are
+  applied and remaining entries are backlog, not missing release functionality.
 
 ## [1.1.1] - 2026-09-27
 
