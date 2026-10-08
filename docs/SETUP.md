@@ -285,6 +285,30 @@ docker run --rm -i \
 ```
 
 <a id="ide-integration"></a>
+### HTTP transport (local-only in this PR)
+
+Set `MCP_TRANSPORT=streamable-http` to run the server over FastMCP's stateless
+Streamable HTTP transport. The default remains stdio. HTTP binds to
+`127.0.0.1:8080` and serves MCP at `/mcp` unless overridden:
+
+```dotenv
+MCP_TRANSPORT=streamable-http
+MCP_HTTP_HOST=127.0.0.1
+MCP_HTTP_PORT=8080
+MCP_HTTP_PATH=/mcp
+```
+
+The server also exposes dependency-free `GET /healthz` and `GET /readyz` probes.
+Stateless mode keeps no MCP sessions in memory and is suitable for replicated
+instances. **This PR still authenticates HTTP with the process-wide token; use
+this mode only locally until the per-request bearer-auth PR is merged.** Do not
+publish the default bind address. In Docker, set `MCP_HTTP_HOST=0.0.0.0`
+explicitly and provide the network boundary outside the example configuration.
+
+The HTTP endpoint supports MCP `initialize` and `tools/list` using JSON
+responses. Existing stdio clients and the stdio startup/authentication path are
+unchanged.
+
 ### MCP Client Integration
 
 The server works with **any MCP client** that supports the stdio transport. The

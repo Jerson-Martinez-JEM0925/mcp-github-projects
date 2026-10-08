@@ -9,8 +9,9 @@
 A Model Context Protocol (MCP) server that lets AI assistants and agents manage
 **GitHub Projects V2** boards programmatically — issues, fields, milestones,
 labels, sub-issues, and full sprint/planning workflows. Built with **Python 3.12**
-and **FastMCP 3.x**, it speaks **stdio JSON-RPC** and runs entirely inside a
-**standalone Docker container** — no host toolchain required beyond Docker.
+and **FastMCP 3.x**, it speaks stdio JSON-RPC or optional stateless Streamable HTTP
+and runs entirely inside a **standalone Docker container** — no host toolchain
+required beyond Docker.
 
 The server exposes **140 tools**: operational primitives, CI integration,
 repository/project quality reports, and higher-level planning capabilities.
@@ -32,7 +33,7 @@ repository/project quality reports, and higher-level planning capabilities.
 - **Scope lock** — `GH_PROJECT_SCOPE_LOCK=true` fences every tool to the
   configured org/repo/project; foreign targets are refused before any mutation.
 - **Docker-first** — one image, zero host dependencies, launched on demand by the
-  MCP client over stdio.
+  MCP client over stdio or optional stateless Streamable HTTP.
 - **MCP-client agnostic** — works with any client that speaks MCP over stdio; no
   IDE lock-in.
 - **Least-privilege ready** — every tool maps to a documented capability

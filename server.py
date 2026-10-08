@@ -15,8 +15,13 @@ import asyncio
 import logging
 import sys
 
+import uvicorn
 from fastmcp import FastMCP
 from fastmcp.tools.function_tool import FunctionTool
+from starlette.applications import Starlette
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+from starlette.routing import Route
 
 from core.arguments import accept_flat_or_wrapped
 from core.auth import resolve_token, validate_scopes
@@ -106,6 +111,50 @@ from tools.project_provisioning import (
 mcp = FastMCP("github-project-management", version=VERSION)
 
 # ── Register Tools ───────────────────────────────────────────────────────────
+
+
+async def _healthz(_request: Request) -> JSONResponse:
+    """Return liveness without consulting configuration or external services."""
+    return JSONResponse({"status": "ok"})
+
+
+async def _readyz(_request: Request) -> JSONResponse:
+    """Return readiness after validated settings have loaded."""
+    return JSONResponse({"status": "ok"})
+
+
+def create_http_app() -> Starlette:
+    """Build the stateless Streamable HTTP ASGI app with health endpoints.
+
+    The FastMCP-generated app owns its lifespan, including the stateless session
+    manager. Health routes are inserted before the MCP route and never invoke
+    authentication or GitHub, so probes remain local and dependency-free.
+    """
+    settings = get_settings()
+    app = mcp.http_app(
+        path=settings.http_path,
+        transport="streamable-http",
+        json_response=True,
+        stateless_http=True,
+    )
+    app.routes.insert(0, Route("/readyz", endpoint=_readyz, methods=["GET"]))
+    app.routes.insert(0, Route("/healthz", endpoint=_healthz, methods=["GET"]))
+    return app
+
+
+async def _serve_http() -> None:
+    """Serve the configured stateless Streamable HTTP ASGI application."""
+    settings = get_settings()
+    app = create_http_app()
+    config = uvicorn.Config(
+        app,
+        host=settings.http_host,
+        port=settings.http_port,
+        lifespan="on",
+        ws="websockets-sansio",
+        log_level="info",
+    )
+    await uvicorn.Server(config).serve()
 
 # In FastMCP 2.14+, use mcp.tool() as a decorator wrapper for pre-defined functions.
 #
@@ -313,14 +362,18 @@ def _configure_logging() -> None:
 
 
 def main() -> None:
-    """Run the MCP server with stdio transport.
+    """Validate authentication and run the configured MCP transport.
 
-    1. Validates authentication (token + scopes) within timeout.
-    2. Starts the FastMCP server on stdio transport.
+    Stdio remains the default and keeps the existing FastMCP runner. HTTP uses
+    a stateless Streamable HTTP ASGI app with explicit health endpoints.
     """
     _configure_logging()
+    settings = get_settings()
     asyncio.run(_validate_auth_on_startup())
-    mcp.run(transport="stdio")
+    if settings.transport == "stdio":
+        mcp.run(transport="stdio")
+    else:
+        asyncio.run(_serve_http())
 
 
 if __name__ == "__main__":

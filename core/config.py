@@ -123,6 +123,34 @@ class GitHubProjectSettings(BaseSettings):
         ),
     )
 
+    # ── Transport ────────────────────────────────────────────────
+    transport: str = Field(
+        default="stdio",
+        validation_alias="MCP_TRANSPORT",
+        description="Server transport: 'stdio' (default) or 'streamable-http'.",
+    )
+    http_host: str = Field(
+        default="127.0.0.1",
+        validation_alias="MCP_HTTP_HOST",
+        min_length=1,
+        max_length=255,
+        description="HTTP bind address; defaults to loopback for local use.",
+    )
+    http_port: int = Field(
+        default=8080,
+        validation_alias="MCP_HTTP_PORT",
+        ge=1,
+        le=65535,
+        description="HTTP listen port.",
+    )
+    http_path: str = Field(
+        default="/mcp",
+        validation_alias="MCP_HTTP_PATH",
+        min_length=1,
+        max_length=255,
+        description="Streamable HTTP endpoint path.",
+    )
+
     # ── Access level & scope lock (issue #34) ────────────────────
     # access_level reads MCP_ACCESS_LEVEL (NO GH_PROJECT_ prefix — parity with
     # mcp-monday-projects, whose write-policy vars are MCP_-prefixed). It
@@ -241,6 +269,25 @@ class GitHubProjectSettings(BaseSettings):
                 f"'user' (got '{self.owner_type}')."
             )
         self.owner_type = normalized
+
+        transport = (self.transport or "stdio").strip().lower()
+        if transport not in ("stdio", "streamable-http"):
+            raise ValueError(
+                "MCP_TRANSPORT must be 'stdio' or 'streamable-http' "
+                f"(got '{self.transport}')."
+            )
+        self.transport = transport
+
+        self.http_host = self.http_host.strip()
+        if not self.http_host:
+            raise ValueError("MCP_HTTP_HOST must not be empty.")
+        self.http_path = self.http_path.strip()
+        if not self.http_path.startswith("/"):
+            raise ValueError("MCP_HTTP_PATH must start with '/'.")
+        if self.http_path == "/":
+            raise ValueError("MCP_HTTP_PATH must identify an endpoint, not '/'.")
+        if self.http_path in ("/healthz", "/readyz"):
+            raise ValueError("MCP_HTTP_PATH is reserved for health endpoints.")
 
         # Validate & normalize the access level (read | write | full).
         access = (self.access_level or "write").strip().lower()
