@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-08
+
 ### Added
 
 - **Repository contents tools**: `list_repository_directory` (one level or
@@ -38,6 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hundreds existed, and `query` was ignored. It now uses search with
   `is:issue`, honours `query`, and reports `total_count` and a correct
   `has_more`.
+
+- `create_project_item` now reports an assignee failure as a warning after the
+  issue has been created, preventing retries from creating duplicates.
 
 ### Notes
 
