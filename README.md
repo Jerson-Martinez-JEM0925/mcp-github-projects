@@ -34,8 +34,9 @@ repository/project quality reports, and higher-level planning capabilities.
   configured org/repo/project; foreign targets are refused before any mutation.
 - **Docker-first** — one image, zero host dependencies, launched on demand by the
   MCP client over stdio or optional stateless Streamable HTTP.
-- **MCP-client agnostic** — works with any client that speaks MCP over stdio; no
-  IDE lock-in.
+- **Per-request HTTP credentials** — stateless Streamable HTTP requires a
+  bearer credential on every MCP request, with fail-closed prefix and optional
+  client-key checks; stdio keeps environment/CLI auth.
 - **Least-privilege ready** — every tool maps to a documented capability
   ([docs/CAPABILITIES.md](docs/CAPABILITIES.md)) so you can scope tokens tightly.
 - **Hardened runtime** — bounded timeouts/retries, atomic owner-only metadata

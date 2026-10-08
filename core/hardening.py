@@ -10,14 +10,32 @@ import json
 import os
 import re
 import tempfile
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar, Token
 from pathlib import Path
 from typing import Any
+
+_REQUEST_SECRETS: ContextVar[tuple[str, ...]] = ContextVar("mcp_request_secrets", default=())
+
+
+@contextmanager
+def request_secret_scope(secret: str) -> Iterator[None]:
+    """Add one ephemeral request secret to every diagnostic redaction."""
+    previous = _REQUEST_SECRETS.get()
+    handle: Token[tuple[str, ...]] = _REQUEST_SECRETS.set((*previous, secret))
+    try:
+        yield
+    finally:
+        _REQUEST_SECRETS.reset(handle)
 
 _SECRET_PATTERNS = (
     re.compile(r"(Bearer\s+)[^\s,;]+", re.IGNORECASE),
     re.compile(r"(token[=:]\s*)[^\s,;]+", re.IGNORECASE),
     re.compile(r"(password[=:]\s*)[^\s,;]+", re.IGNORECASE),
+)
+_TOKEN_PATTERNS = (
+    re.compile(r"\b(?:ghu_|ghr_|ghs_|github_pat_)[A-Za-z0-9_]+\b", re.IGNORECASE),
 )
 _REDACTED = "[REDACTED]"
 
@@ -25,11 +43,14 @@ _REDACTED = "[REDACTED]"
 def redact_sensitive(value: object, secrets: Iterable[str] = ()) -> str:
     """Return text safe for logs and user-facing diagnostics."""
     text = str(value)
-    for secret in secrets:
+    active_secrets = (*_REQUEST_SECRETS.get(), *secrets)
+    for secret in active_secrets:
         if secret and len(secret) >= 4:
             text = text.replace(secret, _REDACTED)
     for pattern in _SECRET_PATTERNS:
         text = pattern.sub(rf"\1{_REDACTED}", text)
+    for pattern in _TOKEN_PATTERNS:
+        text = pattern.sub(_REDACTED, text)
     return text
 
 

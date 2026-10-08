@@ -300,11 +300,53 @@ MCP_HTTP_PATH=/mcp
 
 The server also exposes dependency-free `GET /healthz` and `GET /readyz` probes.
 Stateless mode keeps no MCP sessions in memory and is suitable for replicated
-instances. **This PR still authenticates HTTP with the process-wide token; use
-this mode only locally until the per-request bearer-auth PR is merged.** Do not
-publish the default bind address. In Docker, set `MCP_HTTP_HOST=0.0.0.0`
-explicitly and provide the network boundary outside the example configuration.
+instances. Health probes do not require credentials. The MCP endpoint is
+fail-closed by default: every request must carry its own bearer token.
 
+### HTTP transport and per-user credentials
+
+Authentication is selected automatically: `env` for stdio and `request` for
+Streamable HTTP. HTTP `env` mode is rejected unless
+`MCP_ALLOW_SHARED_TOKEN=true` is explicitly set for a trusted local deployment.
+Request mode never reads `GITHUB_TOKEN`, `GH_TOKEN`, or `gh auth token` as a
+fallback, and the request credential is not stored in process environment,
+logs, or a global cache.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `MCP_TRANSPORT` | `stdio` | `stdio` or `streamable-http` |
+| `MCP_HTTP_HOST` | `127.0.0.1` | HTTP bind address |
+| `MCP_HTTP_PORT` | `8080` | HTTP listen port |
+| `MCP_HTTP_PATH` | `/mcp` | MCP endpoint path |
+| `MCP_AUTH_MODE` | `env` / `request` | Shared env auth or per-request bearer auth |
+| `MCP_ALLOW_SHARED_TOKEN` | `false` | Required to opt into HTTP `env` mode |
+| `MCP_CLIENT_KEY` | unset | Optional constant-time `X-MCP-Client-Key` check |
+| `MCP_ALLOWED_TOKEN_PREFIXES` | `ghu_,github_pat_` | Comma-separated request-token prefixes; empty disables filtering |
+
+A missing/malformed bearer, wrong client key, or rejected prefix returns `401`
+with `WWW-Authenticate: Bearer` and a generic JSON body. The default GitHub
+prefixes intentionally reject classic `ghp_` tokens; override them only when
+there is a documented token format requirement.
+
+LibreChat can send a per-user PAT through request headers:
+
+```yaml
+mcpServers:
+  github-governance:
+    type: streamable-http
+    url: "http://mcp-github:8080/mcp"
+    startup: false
+    requiresOAuth: false
+    headers:
+      Authorization: "Bearer {{GITHUB_PAT}}"
+      X-MCP-Client-Key: "${MCP_GITHUB_CLIENT_KEY}"
+    customUserVars:
+      GITHUB_PAT:
+        title: "GitHub fine-grained token"
+        sensitive: true
+```
+
+The `oauth` block for GitHub App user access tokens will be documented in PR 4.
 The HTTP endpoint supports MCP `initialize` and `tools/list` using JSON
 responses. Existing stdio clients and the stdio startup/authentication path are
 unchanged.
