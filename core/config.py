@@ -187,6 +187,48 @@ class GitHubProjectSettings(BaseSettings):
             "tools, each requiring confirm=true). Set via MCP_ACCESS_LEVEL."
         ),
     )
+    # write_tool_allowlist reads MCP_WRITE_TOOL_ALLOWLIST (parity with
+    # mcp-monday-projects). When non-empty, only the listed write/delete tools
+    # are registered; read tools are unaffected and MCP_ACCESS_LEVEL still
+    # applies first. Unknown names fail at startup (see server.py).
+    write_tool_allowlist: str = Field(
+        default="",
+        validation_alias="MCP_WRITE_TOOL_ALLOWLIST",
+        max_length=4_000,
+        description=(
+            "Comma-separated write/delete tools to expose; empty (default) "
+            "exposes every tool allowed by MCP_ACCESS_LEVEL."
+        ),
+    )
+    # server_instructions reads MCP_SERVER_INSTRUCTIONS (parity with
+    # mcp-monday-projects): replaces the built-in model instructions sent in
+    # the MCP initialize result.
+    server_instructions: str = Field(
+        default="",
+        validation_alias="MCP_SERVER_INSTRUCTIONS",
+        max_length=4_000,
+        description="Replaces the built-in MCP server instructions when non-empty.",
+    )
+    # Governed commits (create_branch / commit_files): branch and path fences.
+    write_branch_prefixes: str = Field(
+        default="chatbot/",
+        max_length=1_000,
+        description=(
+            "Comma-separated branch prefixes create_branch / commit_files may "
+            "write to (GH_PROJECT_WRITE_BRANCH_PREFIXES). The default branch "
+            "is always refused."
+        ),
+    )
+    write_path_prefixes: str = Field(
+        default="",
+        max_length=2_000,
+        description=(
+            "Comma-separated path prefixes commit_files may touch "
+            "(GH_PROJECT_WRITE_PATH_PREFIXES); empty allows any path except "
+            ".github/."
+        ),
+    )
+
     # scope_lock reads GH_PROJECT_SCOPE_LOCK (prefixed) — parity concept with
     # mcp-monday-projects' MONDAY_WORKSPACE_ID. When true, every tool is
     # confined to the configured org/repo/project target.
@@ -364,6 +406,22 @@ class GitHubProjectSettings(BaseSettings):
         if raw is None:
             raw = "ghu_,github_pat_"
         return tuple(prefix.strip() for prefix in raw.split(",") if prefix.strip())
+
+    def write_tool_allowlist_names(self) -> frozenset[str]:
+        """Return the MCP_WRITE_TOOL_ALLOWLIST entries (empty = no filter)."""
+        return frozenset(
+            name.strip() for name in self.write_tool_allowlist.split(",") if name.strip()
+        )
+
+    def branch_prefixes(self) -> tuple[str, ...]:
+        """Return the branch prefixes governed commits may write to."""
+        return tuple(p.strip() for p in self.write_branch_prefixes.split(",") if p.strip())
+
+    def path_prefixes(self) -> tuple[str, ...]:
+        """Return the path prefixes governed commits may touch (empty = any)."""
+        return tuple(
+            p.strip().lstrip("/") for p in self.write_path_prefixes.split(",") if p.strip()
+        )
 
 
 @lru_cache

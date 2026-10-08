@@ -30,6 +30,8 @@ class Capability(str, Enum):
     PULL_REQUESTS_WRITE = "pull_requests.write"
     ACTIONS_READ = "actions.read"
     ACTIONS_WRITE = "actions.write"
+    CONTENTS_READ = "contents.read"
+    CONTENTS_WRITE = "contents.write"
 
 
 # Shorthand aliases for readability
@@ -47,6 +49,8 @@ PRR = Capability.PULL_REQUESTS_READ
 PRW = Capability.PULL_REQUESTS_WRITE
 AR = Capability.ACTIONS_READ
 AW = Capability.ACTIONS_WRITE
+CTR = Capability.CONTENTS_READ
+CTW = Capability.CONTENTS_WRITE
 
 # ---------------------------------------------------------------------------
 # Tool → Required Capabilities mapping
@@ -185,6 +189,17 @@ TOOL_CAPABILITIES: dict[str, FrozenSet[Capability]] = {
     "paginated_issue_page": frozenset({IR}),
     "response_diagnostics": frozenset(),
 
+    # --- Repository contents and pull request listing ---
+    "list_repository_directory": frozenset({CTR}),
+    "get_repository_file": frozenset({CTR}),
+    "search_repository_code": frozenset({CTR}),
+    "list_pull_requests": frozenset({PRR}),
+    "get_pull_request_detail": frozenset({PRR}),
+
+    # --- Governed commits (branch + path fenced) ---
+    "create_branch": frozenset({CTW}),
+    "commit_files": frozenset({CTW}),
+
     # --- Permanent delete (issue #34) — exposed only at MCP_ACCESS_LEVEL=full ---
     "delete_project_item": frozenset({PW}),
     "delete_issue": frozenset({IW}),
@@ -243,10 +258,10 @@ TOOL_CAPABILITIES: dict[str, FrozenSet[Capability]] = {
 # ---------------------------------------------------------------------------
 
 PROFILES: dict[str, FrozenSet[Capability]] = {
-    "read_only": frozenset({IR, CR, PR, PLR, LR, PRR}),
+    "read_only": frozenset({IR, CR, PR, PLR, LR, PRR, CTR}),
     "commenter": frozenset({IR, CR, CW}),
     "project_manager": frozenset(Capability),
-    "developer": frozenset({IR, IW, CR, CW, PR, PW, PLR, LR, PRR, PRW}),
+    "developer": frozenset({IR, IW, CR, CW, PR, PW, PLR, LR, PRR, PRW, CTR, CTW}),
 }
 
 

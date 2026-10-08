@@ -7,13 +7,14 @@ making completeness, risk, and lifecycle state explicit.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from core.config import get_settings
-from core.error_handling import handle_tool_error
+from core.error_handling import build_error_response, handle_tool_error
 from core.factory import get_service_factory
 from core.hardening import bounded_text, parse_json_array, parse_json_object
 from models.responses import ToolSuccess
@@ -217,12 +218,27 @@ async def label_milestone_consistency_report(params: ConsistencyInput) -> dict:
 
 
 async def paginated_issue_page(params: PageInput) -> dict:
-    """Return one explicit issue page with query, page, and truncation metadata."""
+    """Return one explicit page of issues (pull requests excluded), newest first, with total and has_more.
+
+    Uses the search API with `is:issue`, so a page is never shortened by
+    pull requests and `query` (plain GitHub search terms, e.g. 'label:adr'
+    or 'ADR in:title') is honoured.
+    """
     try:
+        if re.search(r"(^|\s)-?(repo|org|user):", params.query, flags=re.IGNORECASE):
+            return build_error_response(error_type="validation", message="query must not contain repo:/org:/user: qualifiers; the repository is fixed", suggestion="Remove the qualifier and retry.")
         await get_service_factory().ensure_auth()
-        raw = await _api(f"repos/{_repo()}/issues?state={params.state}&per_page={params.per_page}&page={params.page}")
-        issues = [x for x in raw if "pull_request" not in x]
-        return ToolSuccess(data={"query": params.query, "state": params.state, "page": params.page, "per_page": params.per_page, "count": len(issues), "has_more": len(issues) == params.per_page, "truncated": len(issues) == params.per_page, "issues": [_row(x) for x in issues]}).model_dump()
+        terms = [f"repo:{_repo()}", "is:issue"]
+        if params.state != "all":
+            terms.append(f"is:{params.state}")
+        if params.query.strip():
+            terms.append(params.query.strip())
+        result = await get_service_factory().gh().run(["api", "-X", "GET", "search/issues", "-f", f"q={' '.join(terms)}", "-f", "sort=created", "-f", "order=desc", "-f", f"per_page={params.per_page}", "-f", f"page={params.page}"])
+        raw = json.loads(result.stdout) if result.stdout.strip() else {}
+        issues = [x for x in (raw.get("items", []) if isinstance(raw, dict) else []) if isinstance(x, dict) and "pull_request" not in x]
+        total = int(raw.get("total_count", len(issues))) if isinstance(raw, dict) else len(issues)
+        has_more = total > (params.page - 1) * params.per_page + len(issues)
+        return ToolSuccess(data={"query": " ".join(terms), "state": params.state, "page": params.page, "per_page": params.per_page, "total_count": total, "count": len(issues), "has_more": has_more, "truncated": has_more, "issues": [_row(x) for x in issues]}).model_dump()
     except Exception as exc:
         return handle_tool_error(exc, context="Paginated issue page failed")
 

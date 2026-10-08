@@ -351,6 +351,39 @@ The HTTP endpoint supports MCP `initialize` and `tools/list` using JSON
 responses. Existing stdio clients and the stdio startup/authentication path are
 unchanged.
 
+### Model instructions, repository documentation and governed commits
+
+The `initialize` result carries built-in **server instructions** telling the
+model to call tools (instead of answering from memory) for anything about the
+repository: documentation, ADRs, issues, pull requests and the board. LibreChat
+injects them into the system prompt with `serverInstructions: true` (or a string
+of its own) in the `mcpServers` entry.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `MCP_SERVER_INSTRUCTIONS` | built-in text | Replaces the built-in instructions (max 4000 chars) |
+| `MCP_WRITE_TOOL_ALLOWLIST` | unset | Comma-separated write/delete tools to expose; read tools are unaffected, `MCP_ACCESS_LEVEL` still applies first, unknown names fail at startup |
+| `GH_PROJECT_WRITE_BRANCH_PREFIXES` | `chatbot/` | Branch prefixes `create_branch` / `commit_files` may write to; the default branch is always refused |
+| `GH_PROJECT_WRITE_PATH_PREFIXES` | unset (any) | Path prefixes `commit_files` may touch; `.github/` is always refused |
+
+The repository's documentation is readable with `list_repository_directory`,
+`get_repository_file` and `search_repository_code`; pull requests with
+`list_pull_requests` (`state=merged` orders by merge date) and
+`get_pull_request_detail`. Changing files is a three-step, reviewable flow:
+`create_branch` → `commit_files` (GraphQL `createCommitOnBranch`, attributed to
+the token owner and signed by GitHub) → `create_pull_request`. With GitHub App
+user tokens this needs the App permissions **Contents: Read and write** and
+**Pull requests: Read and write**.
+
+A governance assistant that may only propose documentation changes:
+
+```env
+MCP_ACCESS_LEVEL=write
+MCP_WRITE_TOOL_ALLOWLIST=create_branch,commit_files,create_pull_request
+GH_PROJECT_WRITE_BRANCH_PREFIXES=docs/architecture/adr-,chatbot/
+GH_PROJECT_WRITE_PATH_PREFIXES=docs/
+```
+
 ### MCP Client Integration
 
 The server works with **any MCP client** that supports the stdio transport. The

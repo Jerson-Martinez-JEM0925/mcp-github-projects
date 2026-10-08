@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Repository contents tools**: `list_repository_directory` (one level or
+  the whole subtree, glob/substring filter, explicit `truncated`),
+  `get_repository_file` (UTF-8 text paged by characters, with the file URL)
+  and `search_repository_code` (code search pinned to the configured
+  repository). Paths with `..`, empty segments or backslashes are refused.
+- **Pull request listing**: `list_pull_requests` (open / closed / merged / all,
+  author, base and free search terms; `state=merged` is ordered by merge date)
+  and `get_pull_request_detail` (description, branches, reviews per user and
+  changed files). `search_issues` cannot do this because `gh issue list`
+  rejects PR qualifiers.
+- **Governed commits**: `create_branch` and `commit_files` (GraphQL
+  `createCommitOnBranch`, so commits are attributed to the token owner). Only
+  branches matching `GH_PROJECT_WRITE_BRANCH_PREFIXES` (default `chatbot/`),
+  never the default branch, never `.github/`, and optionally only
+  `GH_PROJECT_WRITE_PATH_PREFIXES`.
+- **`MCP_WRITE_TOOL_ALLOWLIST`**: expose only the listed write/delete tools
+  (parity with mcp-monday-projects); unknown names fail at startup.
+- **Server instructions** in the MCP `initialize` result, replaceable with
+  `MCP_SERVER_INSTRUCTIONS` (parity with mcp-monday-projects), so clients such
+  as LibreChat steer the model to call tools instead of answering from memory.
+- New capabilities `contents.read` / `contents.write`.
+
+### Fixed
+
+- `paginated_issue_page` used the REST issues endpoint, which mixes pull
+  requests in: a page of 5 could return 2 issues with `has_more: false` while
+  hundreds existed, and `query` was ignored. It now uses search with
+  `is:issue`, honours `query`, and reports `total_count` and a correct
+  `has_more`.
+
+### Notes
+
+- `tests/test_contracts.py::test_tool_schema_digest` (not run in CI) changes
+  with the seven new tools and the `paginated_issue_page` description; no
+  existing parameter was removed or retyped.
+
 ## [1.3.0] - 2026-10-08
 
 ### Added
