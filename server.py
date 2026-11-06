@@ -38,6 +38,7 @@ from tools.projects.archive import (
 from tools.projects.add_item import add_item_to_project
 from tools.issues.close import close_issue
 from tools.issues.comment_issue import comment_issue
+from tools.issues.attach_file import attach_file_to_issue
 from tools.issues.add_sub_issue import add_sub_issue
 from tools.issues.edit_issue import edit_issue
 from tools.issues.create_item import create_project_item
@@ -206,6 +207,7 @@ _ALL_TOOLS: list = [
     move_to_trash,
     close_issue,
     comment_issue,
+    attach_file_to_issue,
     add_sub_issue,
     edit_issue,
     create_milestone,
