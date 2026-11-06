@@ -89,6 +89,7 @@ TOOL_CAPABILITIES: dict[str, FrozenSet[Capability]] = {
 
     # --- Comments ---
     "comment_issue": frozenset({CW}),
+    "attach_file_to_issue": frozenset({CTW, CW}),
     "comment_issue_progress": frozenset({CW}),
     "comment_issue_plan": frozenset({CW}),
     "comment_issue_blocker": frozenset({CW}),

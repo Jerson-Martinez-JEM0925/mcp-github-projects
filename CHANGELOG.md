@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`attach_file_to_issue`**: attach one or more files to an issue (or pull
+  request) by committing them, binary-safe, and linking them from a single
+  issue comment. GitHub exposes no public API for the issue UI's drag-and-drop
+  attachments, so each file (supplied as base64, up to 10 MB each / 25 MB per
+  call, max 10 files) is written through the Contents API to a
+  configuration-fenced, non-default branch (`GH_PROJECT_WRITE_BRANCH_PREFIXES`,
+  default `chatbot/`) under `.attachments/issue-<n>/`, then referenced from an
+  issue comment (images embedded, other files listed). Overwriting an existing
+  attachment path is handled. Requires `contents.write` + `comments.write`, so
+  it is exposed at `MCP_ACCESS_LEVEL=write` and above.
+
+### Changed
+
 - **PR mutation response validation**: `create_pull_request` and `update_pull_request` now reject provider responses missing the PR number or canonical URL instead of returning a misleading success envelope; troubleshooting documents safe reconciliation before retrying.
 
 ## [1.4.0] - 2026-10-08
