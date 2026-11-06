@@ -843,3 +843,33 @@ Pass arguments flat, e.g. {"issue_number": …}; a legacy {"params": {...}} wrap
 - `0` — tool returned successfully.
 - non-zero — the tool reported an error (`isError: true`) or no response was
   received (check token / project-context env).
+
+## Traceability and per-project visibility
+
+Practices to keep a project traceable and visible to every team, including external collaborators.
+
+### Link an issue to an external tracker
+
+When issues are tracked in an external system as well, keep the link **visible** in the issue body (not
+implicit), so a reader starting from the issue can reach the tracker record:
+
+```text
+**Tracker:** https://<external-tracker>/<path-to-record>
+```
+
+Use the issue tools (`create_item` / `edit_issue` / `update_fields`) to write that link, and link each PR to its
+issue with `Closes #N`. Write the reciprocal link (the issue URL) on the external record from that system's side,
+so the trail works in both directions.
+
+### Per-project visibility (GitHub Project)
+
+- Create the project's GitHub Project and **link it to the repository** (`project_provisioning` / `projects`
+  tools), so the board is visible to the repository's teams and collaborators.
+- Add every issue to the Project and keep its Status current. **Status should reflect reality**: an issue whose
+  PR is open and not yet merged/tested belongs in a review/in-progress state, not `Done`.
+- Assign **all** the people responsible for a shared item, not one each.
+
+### Milestones and priority
+
+- Group issues by phase with **milestones** whose due date comes from the estimation timeline (business days).
+- Mark **priority** with a `priority: critical|high|medium|low` label.
