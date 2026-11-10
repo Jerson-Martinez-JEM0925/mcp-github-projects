@@ -651,6 +651,7 @@ class ProjectService:
         milestone: str | None = None
         due_date: str | None = None
         estimate: float | None = None
+        fields: dict[str, str | float | None] = {}
 
         field_values = node.get("fieldValues", {}).get("nodes", [])
         for fv in field_values:
@@ -662,6 +663,14 @@ class ProjectService:
                 continue
             field_name = field_info.get("name", "")
             canonical_field_name = bare_option_name(field_name)
+            if field_name:
+                for value_key in ("name", "date", "number", "text"):
+                    if value_key in fv:
+                        fields[field_name] = fv.get(value_key)
+                        break
+                else:
+                    if isinstance(fv.get("milestone"), dict):
+                        fields[field_name] = fv["milestone"].get("title")
 
             # ProjectV2ItemFieldSingleSelectValue
             if "name" in fv and field_name:
@@ -707,6 +716,7 @@ class ProjectService:
             assignees=assignees,
             labels=labels,
             content_state=content_state,
+            fields=fields,
         )
 
     def _apply_filters(

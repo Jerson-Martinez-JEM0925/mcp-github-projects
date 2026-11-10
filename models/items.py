@@ -46,6 +46,14 @@ class ProjectItem(BaseModel):
         default=None,
         description="Content state of the linked Issue/PR: OPEN, CLOSED, or MERGED (None for DraftIssues)",
     )
+    fields: dict[str, str | float | None] = Field(
+        default_factory=dict,
+        description=(
+            "Every project field value set on the item, keyed by the field's display name "
+            "(single-select option name, date as YYYY-MM-DD, number, text or milestone title). "
+            "Includes custom fields that have no dedicated attribute."
+        ),
+    )
 
 
 class CreateItemInput(BaseModel):

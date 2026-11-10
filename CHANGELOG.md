@@ -16,6 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `MCP_ACCESS_LEVEL` and `GH_PROJECT_SCOPE_LOCK`, and send an explicit REST API
   version header.
 
+- **Project item field values**: every project item returned by
+  `list_project_items` (and any tool built on the same reader) now includes
+  `fields`, a map of field display name to value for **all** field values set
+  on the item: single-select option name, date (`YYYY-MM-DD`), number, text and
+  milestone title. Custom fields such as a phase, a start date or an external
+  ticket link were previously dropped because only Status, Priority, Milestone,
+  Due date and Estimate had dedicated attributes. Those attributes are
+  unchanged.
+
 - **`attach_file_to_issue`**: attach one or more files to an issue (or pull
   request) by committing them, binary-safe, and linking them from a single
   issue comment. GitHub exposes no public API for the issue UI's drag-and-drop
