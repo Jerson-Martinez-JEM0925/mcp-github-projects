@@ -46,8 +46,13 @@ Lists items from the project board with optional filters.
 
 ```
 Input:  { "status": "📌 To Do", "priority": "Urgent", "assignee": "octocat" }
-Output: { items: [{ node_id, title, issue_number, status, priority, milestone, due_date, assignees, labels }], count }
+Output: { items: [{ node_id, title, issue_number, status, priority, milestone, due_date, assignees, labels,
+                   fields: { "Status": "📌 To Do", "Phase": "F3", "Start": "2026-07-01", "Estimate (h)": 4 } }], count }
 ```
+
+`fields` holds **every** field value set on the item, keyed by the field's display name, including custom
+fields (single-select option name, date, number, text or milestone title). Use it to read or verify custom
+fields that have no dedicated attribute.
 
 **Filters** (all optional): status, priority, labels, assignee, milestone, due_date, due_date_op (before/after/exact)
 
