@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Issue dependencies**: added `list_issue_dependencies`,
+  `add_issue_dependency`, and `remove_issue_dependency`, backed by GitHub's
+  REST issue-dependencies endpoints. They return normalized issue summaries,
+  resolve REST IDs internally for writes, are idempotent, honor
+  `MCP_ACCESS_LEVEL` and `GH_PROJECT_SCOPE_LOCK`, and send an explicit REST API
+  version header.
+
 - **`attach_file_to_issue`**: attach one or more files to an issue (or pull
   request) by committing them, binary-safe, and linking them from a single
   issue comment. GitHub exposes no public API for the issue UI's drag-and-drop

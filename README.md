@@ -13,7 +13,7 @@ and **FastMCP 3.x**, it speaks stdio JSON-RPC or optional stateless Streamable H
 and runs entirely inside a **standalone Docker container** — no host toolchain
 required beyond Docker.
 
-The server exposes **140 tools**: operational primitives, CI integration,
+The server exposes **151 tools**: operational primitives, CI integration,
 repository/project quality reports, and higher-level planning capabilities.
 
 ---
@@ -21,7 +21,7 @@ repository/project quality reports, and higher-level planning capabilities.
 ## Features
 
 - **100+ MCP tools** covering the full GitHub Projects V2 surface: discovery,
-  board operations, issue lifecycle, milestones, labels, sub-issues, and
+  board operations, issue lifecycle and dependencies, milestones, labels, sub-issues, and
   strategic planning.
 - **GitHub Projects V2 native** — GraphQL v4 for field/board mutations, REST/`gh`
   for issue CRUD, with automatic delegation to the right API per operation.
