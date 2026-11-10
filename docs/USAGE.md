@@ -1,6 +1,6 @@
 # MCP GitHub Project Management — Usage Guide
 
-Usage guide for the GitHub Project Management MCP server, with examples per category. The authoritative, generated list of every tool (140 at `MCP_ACCESS_LEVEL=full`) with its access tier and capabilities is [TOOLS.md](TOOLS.md).
+Usage guide for the GitHub Project Management MCP server, with examples per category. The authoritative, generated list of every tool (151 at `MCP_ACCESS_LEVEL=full`) with its access tier and capabilities is [TOOLS.md](TOOLS.md).
 
 ## Project Configuration
 
@@ -18,7 +18,7 @@ The main categories below; the extended capability suite (60 tools), repository/
 | Category | Tools | Count |
 |----------|-------|-------|
 | Discovery & Board | discover_ids, list_project_items, create_project_item, update_project_item_fields, add_item_to_project, set_estimate, archive_project_item, move_to_done, move_to_trash, move_to_status, bulk_update_items | 11 |
-| Issues | close_issue, reopen_issue, comment_issue, edit_issue, get_issue_detail, search_issues, bulk_close_issues, bulk_assign | 8 |
+| Issues | close_issue, reopen_issue, comment_issue, edit_issue, get_issue_detail, list_issue_dependencies, add_issue_dependency, remove_issue_dependency, search_issues, bulk_close_issues, bulk_assign | 11 |
 | Hierarchy | add_sub_issue, remove_sub_issue, list_sub_issues | 3 |
 | Milestones | create_milestone, close_milestone, list_milestones | 3 |
 | Labels | create_label, list_labels | 2 |
@@ -298,6 +298,40 @@ Lists all sub-issues of a parent issue.
 Input:  { "issue_number": 257 }
 Output: { parent_issue, sub_issues: [{ number, title, state, assignees }], count }
 ```
+
+### list_issue_dependencies
+
+Lists real `blocked_by` and/or `blocking` relationships from GitHub's issue
+dependency API and returns normalized `{number, title, state, url}` entries.
+
+```
+Input:  { "issue_number": 26, "direction": "blocked_by" }
+Output: { "issue_number": 26, "blocked_by": [{ "number": 24, "title": "...", "state": "open", "url": "https://github.com/..." }], "blocking": [], "count": 1 }
+```
+
+### add_issue_dependency
+
+Adds a dependency and resolves the blocking issue's REST `id` internally.
+Calling it again returns success with `already_present: true`.
+
+```
+Input:  { "issue_number": 58, "blocked_by_issue_number": 39 }
+Output: { "issue_number": 58, "blocked_by_issue_number": 39, "already_present": false }
+```
+
+### remove_issue_dependency
+
+Removes a dependency. Calling it after removal returns success with
+`already_absent: true`.
+
+```
+Input:  { "issue_number": 58, "blocked_by_issue_number": 39 }
+Output: { "issue_number": 58, "blocked_by_issue_number": 39, "already_absent": false }
+```
+
+All three tools accept optional `owner` and `repo` overrides. The REST API
+version header is sent explicitly, and writes require the server write access
+level.
 
 ---
 

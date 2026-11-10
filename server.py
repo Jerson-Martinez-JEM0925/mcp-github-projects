@@ -40,6 +40,11 @@ from tools.issues.close import close_issue
 from tools.issues.comment_issue import comment_issue
 from tools.issues.attach_file import attach_file_to_issue
 from tools.issues.add_sub_issue import add_sub_issue
+from tools.issues.dependencies import (
+    add_issue_dependency,
+    list_issue_dependencies,
+    remove_issue_dependency,
+)
 from tools.issues.edit_issue import edit_issue
 from tools.issues.create_item import create_project_item
 from tools.discovery.discover import discover_ids
@@ -209,6 +214,9 @@ _ALL_TOOLS: list = [
     comment_issue,
     attach_file_to_issue,
     add_sub_issue,
+    list_issue_dependencies,
+    add_issue_dependency,
+    remove_issue_dependency,
     edit_issue,
     create_milestone,
     close_milestone,
