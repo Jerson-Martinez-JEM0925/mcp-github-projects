@@ -238,6 +238,10 @@ async def get_issue_detail(params: GetIssueDetailInput) -> dict:
         return handle_tool_error(exc, context="Get issue detail failed")
 
 
+# Safety bound for list_sub_issues pagination (100 per page).
+_SUB_ISSUE_MAX_PAGES = 50
+
+
 async def list_sub_issues(params: ListSubIssuesInput) -> dict:
     """List all sub-issues of a parent issue.
 
@@ -265,12 +269,15 @@ async def list_sub_issues(params: ListSubIssuesInput) -> dict:
                 suggestion="Verify the issue number.",
             )
 
+        # GitHub allows up to 100 sub-issues per page; follow the cursor so parents with more than one page are
+        # listed completely (previously only the first 50 were returned).
         query = """
-        query ListSubIssues($nodeId: ID!) {
+        query ListSubIssues($nodeId: ID!, $after: String) {
           node(id: $nodeId) {
             ... on Issue {
-              subIssues(first: 50) {
+              subIssues(first: 100, after: $after) {
                 totalCount
+                pageInfo { hasNextPage endCursor }
                 nodes {
                   number
                   title
@@ -282,23 +289,37 @@ async def list_sub_issues(params: ListSubIssuesInput) -> dict:
           }
         }
         """
-        gql_result = await gh_client.api_graphql(query, {"nodeId": node_id})
-
         sub_issues: list[dict] = []
-        if gql_result.get("data", {}).get("node", {}).get("subIssues"):
-            for node in gql_result["data"]["node"]["subIssues"]["nodes"]:
+        total_count: int | None = None
+        after: str | None = None
+        for _ in range(_SUB_ISSUE_MAX_PAGES):
+            variables = {"nodeId": node_id}
+            if after:
+                variables["after"] = after
+            gql_result = await gh_client.api_graphql(query, variables)
+            page = ((gql_result or {}).get("data") or {}).get("node") or {}
+            page = page.get("subIssues") or {}
+            if not page:
+                break
+            total_count = page.get("totalCount", total_count)
+            for node in page.get("nodes") or []:
                 sub_issues.append({
                     "number": node.get("number"),
                     "title": node.get("title"),
                     "state": node.get("state"),
-                    "assignees": [a["login"] for a in node.get("assignees", {}).get("nodes", [])],
+                    "assignees": [a["login"] for a in (node.get("assignees") or {}).get("nodes", [])],
                 })
+            info = page.get("pageInfo") or {}
+            if not info.get("hasNextPage") or not info.get("endCursor"):
+                break
+            after = info["endCursor"]
 
         return ToolSuccess(
             data={
                 "parent_issue": params.issue_number,
                 "sub_issues": sub_issues,
                 "count": len(sub_issues),
+                "total_count": total_count if total_count is not None else len(sub_issues),
             },
         ).model_dump()
 
