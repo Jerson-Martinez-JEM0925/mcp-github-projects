@@ -158,6 +158,7 @@ TOOL_CAPABILITIES: dict[str, FrozenSet[Capability]] = {
     "create_label": frozenset({LW}),
     "list_milestones": frozenset({PLR}),
     "create_milestone": frozenset({PLW}),
+    "update_milestone": frozenset({PLW}),
     "close_milestone": frozenset({PLW}),
     "set_estimate": frozenset({PW}),
     "suggest_issue_labels": frozenset({IR, LR}),

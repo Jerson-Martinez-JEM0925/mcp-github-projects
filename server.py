@@ -51,7 +51,12 @@ from tools.discovery.discover import discover_ids
 from tools.fields.estimate import set_estimate
 from tools.discovery.list_items import list_project_items
 from tools.projects.update_fields import update_project_item_fields
-from tools.fields.milestones import create_milestone, close_milestone, list_milestones
+from tools.fields.milestones import (
+    create_milestone,
+    close_milestone,
+    list_milestones,
+    update_milestone,
+)
 from tools.fields.labels import create_label, list_labels
 from tools.bulk.bulk_operations import bulk_close_issues, search_issues
 from tools.issues.advanced_operations import (
@@ -221,6 +226,7 @@ _ALL_TOOLS: list = [
     create_milestone,
     close_milestone,
     list_milestones,
+    update_milestone,
     create_label,
     list_labels,
     bulk_close_issues,

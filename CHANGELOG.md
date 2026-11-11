@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`update_milestone`**: partially update an existing milestone through the GitHub REST API, including title, description, due date, and state. It supports clearing `due_on`, validates state values, honors `GH_PROJECT_SCOPE_LOCK`, and requires `planning.write`.
+
 - **Issue dependencies**: added `list_issue_dependencies`,
   `add_issue_dependency`, and `remove_issue_dependency`, backed by GitHub's
   REST issue-dependencies endpoints. They return normalized issue summaries,

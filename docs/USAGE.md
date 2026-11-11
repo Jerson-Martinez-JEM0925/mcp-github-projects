@@ -20,7 +20,7 @@ The main categories below; the extended capability suite (60 tools), repository/
 | Discovery & Board | discover_ids, list_project_items, create_project_item, update_project_item_fields, add_item_to_project, set_estimate, archive_project_item, move_to_done, move_to_trash, move_to_status, bulk_update_items | 11 |
 | Issues | close_issue, reopen_issue, comment_issue, edit_issue, get_issue_detail, list_issue_dependencies, add_issue_dependency, remove_issue_dependency, search_issues, bulk_close_issues, bulk_assign | 11 |
 | Hierarchy | add_sub_issue, remove_sub_issue, list_sub_issues | 3 |
-| Milestones | create_milestone, close_milestone, list_milestones | 3 |
+| Milestones | create_milestone, update_milestone, close_milestone, list_milestones | 4 |
 | Labels | create_label, list_labels | 2 |
 | Stats & Planning | get_project_stats, get_sprint_summary, sprint_planning, generate_release_notes, link_pull_request, create_pull_request, update_pull_request | 7 |
 | CI / Actions | list_workflows, list_workflow_runs, get_workflow_run, get_pr_checks, get_job_logs, rerun_workflow_run, dispatch_workflow | 7 |
@@ -349,6 +349,19 @@ Creates a new milestone with optional description and due date.
 ```
 Input:  { "title": "Sprint 13 - Sep 28", "description": "Post-launch fixes", "due_date": "2026-09-28" }
 Output: { number, title, html_url }
+```
+
+### update_milestone
+
+Updates selected fields of an existing milestone with a partial REST `PATCH`.
+Only supplied fields are sent. `due_on` accepts `YYYY-MM-DD` and is sent as
+midnight UTC; pass `null` or an empty string to remove the date. `state` must
+be `open` or `closed`. Optional `owner` and `repo` overrides respect
+`GH_PROJECT_SCOPE_LOCK`.
+
+```
+Input:  { "milestone_number": 5, "due_on": "2026-11-18" }
+Output: { number, title, description, state, due_on, html_url, updated_fields, message }
 ```
 
 ### close_milestone

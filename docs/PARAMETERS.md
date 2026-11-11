@@ -212,6 +212,27 @@ Closes the underlying GitHub issue by issue number. Does not modify the project 
 
 ---
 
+## update_milestone
+
+Updates selected fields on an existing milestone through
+`PATCH /repos/{owner}/{repo}/milestones/{milestone_number}`. At least one
+update field is required; owner and repo are optional target overrides.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `milestone_number` | `int` | Required | — | Positive GitHub milestone number |
+| `title` | `string` | Optional | `null` | Replacement milestone title |
+| `description` | `string` | Optional | `null` | Replacement description; an empty string clears it |
+| `due_on` | `string` or `null` | Optional | `null` | `YYYY-MM-DD`, `null`, or empty string; null/empty removes the due date |
+| `state` | `string` | Optional | `null` | New state, either `open` or `closed` |
+| `owner` | `string` | Optional | configured owner | GitHub owner override; rejected outside the locked scope |
+| `repo` | `string` | Optional | configured repository | Repository override; rejected outside the locked scope |
+
+Only fields supplied by the caller are sent. The date form `YYYY-MM-DD` is
+normalized to `YYYY-MM-DDT00:00:00Z` for GitHub. The operation is idempotent.
+
+---
+
 ## server_info
 
 Diagnostics tool. Returns safe, credential-free server metadata: the effective
