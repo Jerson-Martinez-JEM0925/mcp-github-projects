@@ -142,6 +142,41 @@ async def test_update_pull_request_valid_state_closed() -> None:
 
 
 @pytest.mark.anyio
+async def test_update_pull_request_metadata_only_does_not_send_empty_patch() -> None:
+    """Metadata-only requests read the PR before requesting review."""
+    run_mock = AsyncMock(side_effect=[
+        _cmd_result(json.dumps({
+            **PR_API_RESPONSE,
+            "user": {"login": "author"},
+        })),
+        _cmd_result(json.dumps({"requested_reviewers": []})),
+    ])
+
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="tok")), \
+            patch("clients.gh_cli_client.GHCLIClient.run", new=run_mock):
+        result = await update_pull_request(
+            UpdatePullRequestInput(
+                pull_number=238,
+                reviewers=["ffactib"],
+            )
+        )
+
+    assert result["ok"] is True
+    assert result["data"]["metadata_status"] == "complete"
+    assert result["data"]["metadata_results"] == [
+        {"field": "reviewers", "outcome": "success", "value": "ffactib"},
+    ]
+    first_call = run_mock.call_args_list[0].args[0]
+    second_call = run_mock.call_args_list[1].args[0]
+    assert first_call == [
+        "api",
+        "repos/jersonmartinez/mcp-github-projects/pulls/238",
+    ]
+    assert "PATCH" not in first_call
+    assert "repos/jersonmartinez/mcp-github-projects/pulls/238/requested_reviewers" in second_call
+
+
+@pytest.mark.anyio
 async def test_update_pull_request_cli_error() -> None:
     """A gh CLI/provider failure maps to the standard internal error envelope."""
     run_mock = AsyncMock(

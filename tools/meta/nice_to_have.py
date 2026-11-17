@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import date
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -19,6 +20,7 @@ from core.config import get_settings
 from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
 from core.factory import get_service_factory
+from services.field_defaults import compute_defaults
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +44,80 @@ class LinkPullRequestInput(BaseModel):
     pr_number: int = Field(description="Pull request number to link")
 
 
-class CreatePullRequestInput(BaseModel):
+class PullRequestMetadataInput(BaseModel):
+    """Metadata shared by pull-request creation and update."""
+
+    reviewers: list[str] | None = Field(
+        default=None,
+        min_length=1,
+        max_length=15,
+        description="GitHub usernames to request for review (the PR author is not allowed).",
+    )
+    team_reviewers: list[str] | None = Field(
+        default=None,
+        min_length=1,
+        max_length=15,
+        description="GitHub team slugs to request for review.",
+    )
+    labels: list[str] | None = Field(
+        default=None,
+        min_length=1,
+        max_length=50,
+        description="Repository labels to replace/set on the pull request.",
+    )
+    assignees: list[str] | None = Field(
+        default=None,
+        min_length=1,
+        max_length=50,
+        description="GitHub usernames to assign to the pull request.",
+    )
+    milestone: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=256,
+        description="Repository milestone title to assign.",
+    )
+    status: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        description="Project V2 Status option name.",
+    )
+    priority: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        description="Project V2 Priority option name.",
+    )
+    area: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        description="Project V2 Area option name.",
+    )
+    work_type: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        description="Project V2 Work Type option name.",
+    )
+    estimate: float | None = Field(
+        default=None,
+        ge=0.25,
+        le=9999,
+        description="Project estimate in hours (also subject to configured granularity).",
+    )
+    due_date: str | None = Field(
+        default=None,
+        description="Project due date in ISO 8601 format (YYYY-MM-DD).",
+    )
+    apply_defaults: bool = Field(
+        default=False,
+        description="Fill omitted Project V2 fields using configured defaults.",
+    )
+
+
+class CreatePullRequestInput(PullRequestMetadataInput):
     """Input schema for the create_pull_request tool."""
 
     title: str = Field(description="Pull request title")
@@ -63,13 +138,13 @@ class CreatePullRequestInput(BaseModel):
     add_to_project: bool = Field(
         default=False,
         description=(
-            "When true, also add the new PR to the configured project board "
-            "via add_item_to_project (issue #18)."
+            "When true, add the new PR to the configured Project V2 board. "
+            "Project fields or apply_defaults also cause it to be added."
         ),
     )
 
 
-class UpdatePullRequestInput(BaseModel):
+class UpdatePullRequestInput(PullRequestMetadataInput):
     """Input schema for the update_pull_request tool.
 
     ``pull_number`` is required; every other field is an optional update and
@@ -102,6 +177,10 @@ class UpdatePullRequestInput(BaseModel):
     maintainer_can_modify: Optional[bool] = Field(
         default=None,
         description="Whether maintainers can modify the pull request branch",
+    )
+    add_to_project: bool = Field(
+        default=False,
+        description="Add the PR to the configured Project V2 board when true.",
     )
 
 
@@ -334,21 +413,244 @@ async def link_pull_request(params: LinkPullRequestInput) -> dict:
         return handle_tool_error(exc, context="Link pull request failed")
 
 
+def _requested_board_fields(params: PullRequestMetadataInput) -> dict[str, str | float]:
+    """Collect explicitly supplied Project V2 fields in stable order."""
+    return {
+        name: value
+        for name, value in (
+            ("Status", params.status),
+            ("Priority", params.priority),
+            ("Area", params.area),
+            ("Work Type", params.work_type),
+            ("Estimate", params.estimate),
+            ("Due date", params.due_date),
+        )
+        if value is not None
+    }
+
+
+async def _resolve_milestone_number(gh_client, repo: str, title: str) -> int:
+    """Resolve a repository milestone title to the REST API's numeric ID."""
+    result = await gh_client.run([
+        "api",
+        f"repos/{repo}/milestones?state=all&per_page=100",
+    ])
+    milestones = json.loads(result.stdout or "[]")
+    for milestone in milestones if isinstance(milestones, list) else []:
+        if isinstance(milestone, dict) and milestone.get("title") == title:
+            number = milestone.get("number")
+            if isinstance(number, int):
+                return number
+    raise ValueError(f"Milestone '{title}' was not found in {repo}.")
+
+
+async def _apply_pull_request_metadata(
+    *,
+    repo: str,
+    pull_number: int,
+    gh_client,
+    params: PullRequestMetadataInput,
+    pull_request_data: dict | None = None,
+) -> list[dict[str, str]]:
+    """Apply GitHub and Project V2 metadata, reporting each partial outcome."""
+    results: list[dict[str, str]] = []
+    board_fields = _requested_board_fields(params)
+
+    issue_fields: list[str] = []
+    issue_args = [
+        "api",
+        "--method", "PATCH",
+        f"repos/{repo}/issues/{pull_number}",
+    ]
+    if params.milestone is not None:
+        try:
+            milestone_number = await _resolve_milestone_number(
+                gh_client, repo, params.milestone
+            )
+            issue_args.extend(["-F", f"milestone={milestone_number}"])
+            issue_fields.append("milestone")
+        except Exception as exc:
+            results.append({
+                "field": "milestone",
+                "outcome": "failure",
+                "reason": str(exc),
+            })
+    if params.labels is not None:
+        for label in params.labels:
+            issue_args.extend(["-f", f"labels[]={label}"])
+        issue_fields.append("labels")
+    if params.assignees is not None:
+        for assignee in params.assignees:
+            issue_args.extend(["-f", f"assignees[]={assignee}"])
+        issue_fields.append("assignees")
+    if issue_fields:
+        try:
+            await gh_client.run(issue_args)
+            for field_name in issue_fields:
+                results.append({
+                    "field": field_name,
+                    "outcome": "success",
+                    "value": (
+                        params.milestone
+                        if field_name == "milestone"
+                        else ", ".join(getattr(params, field_name) or [])
+                    ),
+                })
+        except Exception as exc:
+            for field_name in issue_fields:
+                results.append({
+                    "field": field_name,
+                    "outcome": "failure",
+                    "reason": str(exc),
+                })
+
+    reviewers = params.reviewers or []
+    team_reviewers = params.team_reviewers or []
+    if reviewers or team_reviewers:
+        try:
+            if len(reviewers) + len(team_reviewers) > 15:
+                results.append({
+                    "field": "reviewers",
+                    "outcome": "failure",
+                    "reason": "GitHub allows at most 15 requested users and teams per call.",
+                })
+            else:
+                pr_data = pull_request_data or {}
+                author = ((pr_data.get("user") or {}).get("login") or "").casefold()
+                if not author:
+                    pr_result = await gh_client.run([
+                        "api", f"repos/{repo}/pulls/{pull_number}",
+                    ])
+                    pr_data = json.loads(pr_result.stdout or "{}")
+                    author = ((pr_data.get("user") or {}).get("login") or "").casefold()
+                if not author:
+                    results.append({
+                        "field": "reviewers",
+                        "outcome": "failure",
+                        "reason": (
+                            "Could not determine the pull request author; "
+                            "no review was requested."
+                        ),
+                    })
+                elif any(login.casefold() == author for login in reviewers):
+                    results.append({
+                        "field": "reviewers",
+                        "outcome": "failure",
+                        "reason": (
+                            f"Cannot request a review from the pull request author "
+                            f"'{author}'."
+                        ),
+                    })
+                else:
+                    reviewer_args = [
+                        "api",
+                        "--method", "POST",
+                        f"repos/{repo}/pulls/{pull_number}/requested_reviewers",
+                    ]
+                    for login in reviewers:
+                        reviewer_args.extend(["-f", f"reviewers[]={login}"])
+                    for team in team_reviewers:
+                        reviewer_args.extend(["-f", f"team_reviewers[]={team}"])
+                    await gh_client.run(reviewer_args)
+                    if reviewers:
+                        results.append({
+                            "field": "reviewers",
+                            "outcome": "success",
+                            "value": ", ".join(reviewers),
+                        })
+                    if team_reviewers:
+                        results.append({
+                            "field": "team_reviewers",
+                            "outcome": "success",
+                            "value": ", ".join(team_reviewers),
+                        })
+        except Exception as exc:
+            results.append({
+                "field": "reviewers",
+                "outcome": "failure",
+                "reason": str(exc),
+            })
+
+    if params.apply_defaults or board_fields:
+        try:
+            settings = get_settings()
+            graphql_client = await get_service_factory().graphql()
+            discovery = await get_service_factory().discovery_service(graphql_client)
+            project_service = await get_service_factory().project_service(
+                graphql_client, gh_client
+            )
+            metadata = await discovery.get_cached_or_discover()
+            item_id = await project_service.resolve_item_id(metadata, pull_number)
+            if not item_id:
+                content_id = await project_service.resolve_content_id(pull_number)
+                item_id = await project_service.add_item_by_content_id(
+                    metadata, content_id
+                )
+
+            effective_fields = dict(board_fields)
+            if params.apply_defaults:
+                effective_fields = compute_defaults(
+                    metadata=metadata,
+                    settings=settings,
+                    provided=board_fields,
+                    labels=params.labels,
+                )
+            for field_name, value in effective_fields.items():
+                try:
+                    if field_name == "Due date":
+                        date.fromisoformat(str(value))
+                    if field_name == "Estimate":
+                        estimate = float(value)
+                        granularity = settings.estimate_granularity
+                        if (
+                            estimate < settings.estimate_min
+                            or estimate > settings.estimate_max
+                            or abs(estimate / granularity - round(estimate / granularity)) > 1e-8
+                        ):
+                            raise ValueError(
+                                f"Estimate must be between {settings.estimate_min} "
+                                f"and {settings.estimate_max} hours in increments "
+                                f"of {granularity}."
+                            )
+                    await project_service.update_field(
+                        metadata, item_id, field_name, value
+                    )
+                    results.append({
+                        "field": field_name,
+                        "outcome": "success",
+                        "value": str(value),
+                    })
+                except Exception as exc:
+                    results.append({
+                        "field": field_name,
+                        "outcome": "failure",
+                        "reason": str(exc),
+                    })
+        except Exception as exc:
+            results.append({
+                "field": "project_fields",
+                "outcome": "failure",
+                "reason": str(exc),
+            })
+
+    return results
+
+
 async def create_pull_request(params: CreatePullRequestInput) -> dict:
-    """Open a new pull request via the GitHub REST API.
+    """Open a pull request and optionally populate its GitHub/project metadata.
 
     Calls `POST /repos/{owner}/{repo}/pulls` (through `gh api`) using the
-    owner/repo resolved from the GH_PROJECT_* env context, mirroring the
-    other tools in this module. Optionally links the new PR to an issue by
-    reusing the existing link_pull_request logic.
+    scope-locked target. Optional follow-up operations request reviewers, set
+    labels/assignees/milestone, add the PR to Project V2, and write board
+    fields. Each follow-up is reported separately so partial metadata failure
+    is never presented as complete success.
 
     Args:
-        params: Input containing title, head, base, body, draft, and an
-            optional link_to_issue number.
+        params: Pull request content and optional GitHub/Project V2 metadata.
 
     Returns:
-        ToolSuccess with the created PR number and URL, plus an optional
-        link result when link_to_issue is provided.
+        ToolSuccess with the created PR number and URL, optional project/link
+        results, and per-field metadata outcomes.
     """
     try:
         await get_service_factory().ensure_auth()
@@ -407,6 +709,21 @@ async def create_pull_request(params: CreatePullRequestInput) -> dict:
             )
             data["add_to_project_result"] = add_result
 
+        metadata_results = await _apply_pull_request_metadata(
+            repo=repo,
+            pull_number=pr_number,
+            gh_client=gh_client,
+            params=params,
+            pull_request_data=pr_data,
+        )
+        if metadata_results:
+            data["metadata_results"] = metadata_results
+            data["metadata_status"] = (
+                "complete"
+                if all(result["outcome"] == "success" for result in metadata_results)
+                else "partial"
+            )
+
         return ToolSuccess(data=data).model_dump()
 
     except ValueError as exc:
@@ -434,24 +751,20 @@ async def create_pull_request(params: CreatePullRequestInput) -> dict:
 
 
 async def update_pull_request(params: UpdatePullRequestInput) -> dict:
-    """Update an existing pull request via the GitHub REST API.
+    """Update a pull request's content and optional GitHub/project metadata.
 
     Calls `PATCH /repos/{owner}/{repo}/pulls/{pull_number}` (through
-    `gh api`) using the owner/repo resolved from the GH_PROJECT_* env
-    context, mirroring create_pull_request. Only the fields supplied are
-    sent, so unrelated attributes are left untouched. At least one optional
-    field (title, body, base, state, maintainer_can_modify) must be
-    provided; an empty update returns a validation error without calling
-    GitHub.
+    `gh api`) using the scope-locked target. Only supplied content fields are
+    sent. Optional metadata includes reviewer requests, labels, assignees,
+    milestones, and Project V2 fields. Metadata-only updates read the PR
+    instead of sending an empty patch. Partial follow-up results are explicit.
 
     Args:
-        params: Input containing pull_number plus the optional fields to
-            change.
+        params: Pull request number and content/metadata fields to change.
 
     Returns:
-        ToolSuccess with the PR number, canonical URL, title, head/base,
-        draft/state, and the list of fields that were updated; or a
-        structured error envelope on validation/provider failure.
+        ToolSuccess with the PR number, canonical URL, updated fields, and
+        per-field metadata outcomes; or a structured error envelope.
     """
     try:
         # Collect only the fields the caller actually supplied.
@@ -467,13 +780,30 @@ async def update_pull_request(params: UpdatePullRequestInput) -> dict:
         if params.maintainer_can_modify is not None:
             updates["maintainer_can_modify"] = params.maintainer_can_modify
 
-        if not updates:
+        metadata_requested = any(
+            getattr(params, name) is not None
+            for name in (
+                "reviewers",
+                "team_reviewers",
+                "labels",
+                "assignees",
+                "milestone",
+                "status",
+                "priority",
+                "area",
+                "work_type",
+                "estimate",
+                "due_date",
+            )
+        ) or params.apply_defaults or params.add_to_project
+
+        if not updates and not metadata_requested:
             return build_error_response(
                 error_type="validation",
                 message="Provide at least one field to update.",
                 suggestion=(
-                    "Pass at least one of title, body, base, state, or "
-                    "maintainer_can_modify."
+                    "Pass at least one PR field, reviewer, label, assignee, "
+                    "milestone, Project V2 field, or apply_defaults."
                 ),
             )
 
@@ -503,7 +833,12 @@ async def update_pull_request(params: UpdatePullRequestInput) -> dict:
                 f"maintainer_can_modify={'true' if updates['maintainer_can_modify'] else 'false'}",
             ])
 
-        patch_result = await gh_client.run(api_args)
+        if updates:
+            patch_result = await gh_client.run(api_args)
+        else:
+            patch_result = await gh_client.run([
+                "api", f"repos/{repo}/pulls/{params.pull_number}",
+            ])
         pr_data = _validate_pull_request_response(
             json.loads(patch_result.stdout), operation="updating"
         )
@@ -521,6 +856,31 @@ async def update_pull_request(params: UpdatePullRequestInput) -> dict:
             "updated_fields": sorted(updates.keys()),
             "message": f"PR #{pr_number} updated: {pr_url}",
         }
+
+        if params.add_to_project:
+            from tools.projects.add_item import (
+                AddItemToProjectInput,
+                add_item_to_project,
+            )
+
+            data["add_to_project_result"] = await add_item_to_project(
+                AddItemToProjectInput(issue_or_pr_number=pr_number)
+            )
+
+        metadata_results = await _apply_pull_request_metadata(
+            repo=repo,
+            pull_number=pr_number,
+            gh_client=gh_client,
+            params=params,
+            pull_request_data=pr_data,
+        )
+        if metadata_results:
+            data["metadata_results"] = metadata_results
+            data["metadata_status"] = (
+                "complete"
+                if all(result["outcome"] == "success" for result in metadata_results)
+                else "partial"
+            )
 
         return ToolSuccess(data=data).model_dump()
 

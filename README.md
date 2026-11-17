@@ -42,8 +42,9 @@ repository/project quality reports, and higher-level planning capabilities.
 - **Hardened runtime** — bounded timeouts/retries, atomic owner-only metadata
   cache, target-namespaced isolation, and token redaction in all diagnostics.
 - **Response-quality diagnostics** — bounded repository health, issue/PR lifecycle, CI conclusions, metadata consistency, closure readiness, pagination, and safe target diagnostics for automation workers.
-- **Multi-target profiles** — manage several boards from one install via named
-  `profiles/*.env` files.
+- **Multiple scoped instances** — connect to several repositories/projects at
+  once with distinct MCP server names and a scope lock per target. See
+  [docs/MULTI_SCOPE_CONFIGURATION.md](docs/MULTI_SCOPE_CONFIGURATION.md).
 
 ---
 
@@ -138,7 +139,10 @@ displays. Credentials are supplied through `--env-file`; nothing sensitive lives
 in the JSON.
 
 > **IDE-specific setup** (config file locations, per-client quirks) is documented
-> in [docs/SETUP.md](docs/SETUP.md#ide-integration).
+> in [docs/SETUP.md](docs/SETUP.md#ide-integration). To connect multiple
+> repositories at once, use one scope-locked server per target; see
+> [Multi-scope configuration](docs/MULTI_SCOPE_CONFIGURATION.md) for Devin,
+> Kiro, OpenCode, and Claude Code examples.
 
 ---
 
@@ -170,7 +174,8 @@ docs/TOOLS.md drifts from the registry or any tool lacks a description.
 
 Full input/output reference: [docs/USAGE.md](docs/USAGE.md) ·
 Parameter reference: [docs/PARAMETERS.md](docs/PARAMETERS.md) ·
-Least-privilege capability matrix: [docs/CAPABILITIES.md](docs/CAPABILITIES.md)
+Least-privilege capability matrix: [docs/CAPABILITIES.md](docs/CAPABILITIES.md) ·
+Multi-repository setup: [docs/MULTI_SCOPE_CONFIGURATION.md](docs/MULTI_SCOPE_CONFIGURATION.md)
 
 ---
 

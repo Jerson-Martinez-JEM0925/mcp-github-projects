@@ -70,10 +70,18 @@ Creates a new GitHub issue in the repository and adds it to the project board wi
 | `body` | `string` | Optional | `""` | Issue body content, supports Markdown, maximum 65536 characters |
 | `status` | `string` | Optional | `null` | Status field value to set on the project item after creation |
 | `priority` | `string` | Optional | `null` | Priority field value to set on the project item after creation |
+| `area` | `string` | Optional | `null` | Area single-select option name |
+| `work_type` | `string` | Optional | `null` | Work Type single-select option name |
+| `estimate` | `float` | Optional | `null` | Estimate in hours |
 | `milestone` | `string` | Optional | `null` | Milestone title to assign to the issue (must exist in repository) |
 | `due_date` | `string` | Optional | `null` | Due date in ISO 8601 format (YYYY-MM-DD) to set on the project item |
 | `assignees` | `list[string]` | Optional | `null` | List of GitHub usernames to assign to the created issue |
 | `labels` | `list[string]` | Optional | `null` | List of label names to apply to the created issue |
+| `apply_defaults` | `bool` | Optional | `true` | Fill omitted Project V2 fields using configured defaults |
+
+Issue creation applies configured defaults by default. Supply explicit values
+for every field that should differ from the board defaults; see
+[SETUP](SETUP.md#board-field-defaults).
 
 ### Title Constraints
 
@@ -362,6 +370,67 @@ change.
 | `repo` | `string` | Optional | configured repository | Repository name override |
 
 ---
+
+## create_pull_request
+
+Creates a pull request in the configured repository. The tool can also set
+repository metadata, request reviewers, and add/configure the PR on the
+scope-locked Project V2 board. Metadata mutations are reported individually;
+`metadata_status` is `partial` if any requested follow-up failed.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `title` | `string` | Required | — | Pull request title |
+| `head` | `string` | Required | — | Head branch |
+| `base` | `string` | Optional | `main` | Base branch |
+| `body` | `string` | Optional | `null` | Pull request description |
+| `draft` | `bool` | Optional | `false` | Create a draft pull request |
+| `link_to_issue` | `int` | Optional | `null` | Issue to link to the pull request |
+| `reviewers` | `list[string]` | Optional | `null` | GitHub usernames to request for review; cannot include the PR author |
+| `team_reviewers` | `list[string]` | Optional | `null` | GitHub team slugs to request for review |
+| `labels` | `list[string]` | Optional | `null` | Labels to set on the PR; supplying a list replaces the current list |
+| `assignees` | `list[string]` | Optional | `null` | Assignees to set; supplying a list replaces the current list |
+| `milestone` | `string` | Optional | `null` | Existing repository milestone title |
+| `add_to_project` | `bool` | Optional | `false` | Add the PR to the configured Project V2 board |
+| `status`, `priority`, `area`, `work_type` | `string` | Optional | `null` | Project single-select field values; option names are resolved from the board |
+| `estimate` | `float` | Optional | `null` | Project estimate in hours, within configured range and granularity |
+| `due_date` | `string` | Optional | `null` | Project due date in `YYYY-MM-DD` format |
+| `apply_defaults` | `bool` | Optional | `false` | Fill omitted Project V2 fields using configured defaults |
+
+Supplying a Project V2 field or `apply_defaults: true` automatically adds the
+PR to the configured board if it is not already present. `Reviewers` and
+`Milestone` Project fields are populated by GitHub from requested reviewers and
+the repository milestone, respectively; they are not written as generic
+custom fields.
+
+## update_pull_request
+
+Updates an existing pull request. `pull_number` is required; at least one PR
+field or metadata operation must be provided.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `pull_number` | `int` | Required | — | Pull request number |
+| `title` | `string` | Optional | `null` | New title |
+| `body` | `string` | Optional | `null` | New body |
+| `base` | `string` | Optional | `null` | New base branch |
+| `state` | `string` | Optional | `null` | `open` or `closed` |
+| `maintainer_can_modify` | `bool` | Optional | `null` | Allow maintainers to update the head branch |
+| `reviewers`, `team_reviewers` | `list[string]` | Optional | `null` | Request GitHub user/team reviewers; the PR author cannot review their own PR |
+| `labels`, `assignees` | `list[string]` | Optional | `null` | Replace the PR's label/assignee list |
+| `milestone` | `string` | Optional | `null` | Existing repository milestone title |
+| `status`, `priority`, `area`, `work_type` | `string` | Optional | `null` | Project single-select field values |
+| `estimate` | `float` | Optional | `null` | Project estimate in hours |
+| `due_date` | `string` | Optional | `null` | Project due date in `YYYY-MM-DD` format |
+| `apply_defaults` | `bool` | Optional | `false` | Fill omitted Project V2 fields using configured defaults |
+| `add_to_project` | `bool` | Optional | `false` | Add the PR to the configured Project V2 board |
+
+Metadata-only updates do not send an empty PR patch. The response includes
+per-field `metadata_results` and `metadata_status`; a partial result means the
+PR mutation succeeded but one or more requested metadata operations did not.
+
+See [Multiple repositories and project scopes](MULTI_SCOPE_CONFIGURATION.md)
+for client-specific configuration.
 
 ## Global Configuration
 

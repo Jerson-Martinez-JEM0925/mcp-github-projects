@@ -461,13 +461,37 @@ Output: { issue_number, pr_number, pr_url, message }
 ### create_pull_request
 
 Opens a new pull request via the GitHub REST API (`POST /repos/{owner}/{repo}/pulls`).
-Owner/repo come from the `GH_PROJECT_*` env context. Optionally links the new PR to an
-issue by reusing `link_pull_request` (pass `link_to_issue`).
+Owner/repo come from the scope-locked `GH_PROJECT_*` target. It can also set
+GitHub metadata, request user/team reviewers, add the PR to Project V2, and set
+board fields. Repository labels, assignees, and milestone use the GitHub Issues
+API; Status, Priority, Area, Work Type, Estimate, and Due date use Project V2
+GraphQL. GitHub's native Reviewers and Milestone project fields reflect review
+requests and the repository milestone; they are not written as generic custom
+fields.
 
 ```
-Input:  { "title": "Add create_pull_request tool", "head": "feat/create-pull-request-tool", "base": "main", "body": "Closes #7", "draft": false, "link_to_issue": 7 }
-Output: { pr_number, pr_url, title, head, base, draft, state, message, link_result? }
+Input:  { "title": "Add reviewer metadata", "head": "feat/reviewer-metadata",
+          "base": "main", "body": "Closes #42", "link_to_issue": 42,
+          "reviewers": ["octocat"], "labels": ["feature", "documentation"],
+          "assignees": ["octocat"],
+          "milestone": "Example Release",
+          "add_to_project": true, "status": "In Progress",
+          "priority": "High", "area": "tools", "work_type": "Feature",
+          "estimate": 8, "due_date": "2027-12-31",
+          "apply_defaults": true }
+Output: { pr_number, pr_url, add_to_project_result?, metadata_results?,
+          metadata_status?, link_result? }
 ```
+
+`reviewers` accepts GitHub usernames and `team_reviewers` accepts team slugs.
+GitHub does not allow requesting review from the PR author; that entry is
+rejected and reported as a metadata failure. `metadata_status` is `complete`
+only when every requested metadata operation succeeded; `partial` means the PR
+was created but one or more follow-up changes failed. Reconcile those fields
+before retrying, because the PR itself is not rolled back. `labels` and
+`assignees` replace the PR's current lists when supplied. `apply_defaults`
+fills omitted Project V2 fields from the configured defaults. Adding the PR to
+the project is idempotent.
 
 ### update_pull_request
 
@@ -475,14 +499,26 @@ Updates an existing pull request via the GitHub REST API
 (`PATCH /repos/{owner}/{repo}/pulls/{pull_number}`). Owner/repo come from the
 `GH_PROJECT_*` env context. `pull_number` is required; `title`, `body`, `base`,
 `state`, and `maintainer_can_modify` are optional and **at least one** must be
-supplied (an empty update returns a validation error). Only the supplied fields
-are sent, so unrelated attributes are left untouched. `state`, when given, must
-be `open` or `closed`.
+supplied, or at least one metadata operation must be requested. It also accepts
+the reviewer, labels, assignees, milestone, and Project V2 fields described for
+`create_pull_request`. A metadata-only update reads the PR and applies only the
+requested changes; unrelated values are left untouched. `state`, when given,
+must be `open` or `closed`.
 
 ```
-Input:  { "pull_number": 238, "title": "Corrected title", "body": "Line one.\n\nCloses #65", "maintainer_can_modify": true }
-Output: { pr_number, pr_url, title, head, base, draft, state, updated_fields, message }
+Input:  { "pull_number": 42, "reviewers": ["octocat"],
+          "labels": ["feature", "needs-review"], "status": "In Review",
+          "priority": "High", "due_date": "2027-12-31" }
+Output: { pr_number, pr_url, title, head, base, draft, state,
+          updated_fields, metadata_results?, metadata_status?, message }
 ```
+
+For complete issue creation metadata, use `create_project_item` with
+`assignees`, `labels`, `milestone`, `status`, `priority`, `area`, `work_type`,
+`estimate`, and `due_date`; `apply_defaults` is enabled by default there.
+Configure the correct target instance before calling either PR tool. For
+multiple repositories/projects at once, see
+[Multi-scope configuration](MULTI_SCOPE_CONFIGURATION.md).
 
 ### sync_closed_items_to_done
 

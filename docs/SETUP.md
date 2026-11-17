@@ -413,6 +413,10 @@ Notes:
   `-e GITHUB_TOKEN` instead, Docker forwards the variable **name** and reads its
   value from the host environment at runtime.
 - Consult your MCP client's documentation for where its server-config file lives.
+- To connect multiple repositories/projects at once, register a separate named
+  instance for each target and keep `GH_PROJECT_SCOPE_LOCK=true` on all of
+  them. See [Multiple repositories and project scopes](MULTI_SCOPE_CONFIGURATION.md)
+  for Devin, Kiro, OpenCode, and Claude Code examples.
 
 ### Verify
 
