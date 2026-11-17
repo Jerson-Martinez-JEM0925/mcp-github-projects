@@ -5,7 +5,7 @@ without falling back to a separate API path (``gh pr checks``, the web UI):
 
 * read  — ``list_workflows``, ``list_workflow_runs``, ``get_workflow_run``,
   ``get_pr_checks``, ``get_job_logs``
-* write — ``rerun_workflow_run``, ``dispatch_workflow``
+* write — ``rerun_workflow_run``, ``dispatch_workflow``, ``merge_pull_request``
 
 All calls go through the REST API via the factory's ``gh`` runner. Every tool
 targets the configured ``GH_PROJECT_ORG_NAME/GH_PROJECT_REPO_NAME`` by default;
@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 from urllib.parse import urlencode
 
 from pydantic import BaseModel, Field, field_validator
@@ -105,20 +105,62 @@ class RerunWorkflowRunInput(_RepoTarget):
 
 class DispatchWorkflowInput(_RepoTarget):
     workflow: str = Field(
-        ..., min_length=1, description="Workflow file name (e.g. 'ci.yaml') or numeric id."
+        ..., min_length=1, max_length=128,
+        description="Workflow file name (e.g. 'ci.yaml') or numeric id.",
     )
-    ref: str = Field(..., min_length=1, description="Branch or tag to run the workflow on.")
+    ref: str = Field(..., min_length=1, max_length=255, description="Branch or tag to run the workflow on.")
     inputs: dict[str, str] = Field(
         default_factory=dict,
         description="workflow_dispatch inputs (string values, max 10 keys).",
     )
+
+    @field_validator("workflow")
+    @classmethod
+    def _safe_workflow_id(cls, value: str) -> str:
+        if not re.fullmatch(r"(?:[0-9]+|[A-Za-z0-9_.-]+\.ya?ml)", value):
+            raise ValueError("workflow must be a numeric id or a .yml/.yaml filename")
+        return value
+
+    @field_validator("ref")
+    @classmethod
+    def _safe_git_ref(cls, value: str) -> str:
+        forbidden = set(" ~^:?*[\\")
+        if (
+            value.startswith(("/", "."))
+            or value.endswith(("/", ".", ".lock"))
+            or "//" in value
+            or ".." in value
+            or "@{" in value
+            or any(ord(char) < 32 or char in forbidden for char in value)
+            or any(part.startswith(".") for part in value.split("/"))
+        ):
+            raise ValueError("ref must be a valid branch or tag name")
+        return value
 
     @field_validator("inputs")
     @classmethod
     def _bounded_inputs(cls, value: dict[str, str]) -> dict[str, str]:
         if len(value) > 10:
             raise ValueError("GitHub accepts at most 10 workflow_dispatch inputs")
+        if any(not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]{0,99}", key) for key in value):
+            raise ValueError("workflow input names must be 1-100 safe identifier characters")
+        if any(len(item) > 10_000 for item in value.values()) or sum(map(len, value.values())) > 20_000:
+            raise ValueError("workflow input values exceed the 20,000-character limit")
         return value
+
+
+class MergePullRequestInput(_RepoTarget):
+    pull_number: int = Field(..., ge=1, description="Pull request number to merge.")
+    expected_head_sha: str = Field(
+        ...,
+        min_length=40,
+        max_length=40,
+        pattern=r"^[0-9a-fA-F]{40}$",
+        description="Exact current head SHA; stale requests are refused.",
+    )
+    merge_method: Literal["merge", "squash", "rebase"] = Field(
+        ..., description="GitHub merge method to use."
+    )
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -148,6 +190,14 @@ async def _post(path: str, body: dict[str, Any] | None = None) -> None:
         else:
             args += ["-f", f"{key}={value}"]
     await get_service_factory().gh().run(args)
+
+
+async def _put(path: str, body: dict[str, Any]) -> Any:
+    args = ["api", "--method", "PUT", path]
+    for key, value in body.items():
+        args += ["-f", f"{key}={value}"]
+    result = await get_service_factory().gh().run(args)
+    return json.loads(result.stdout) if result.stdout.strip() else {}
 
 
 def _run_summary(run: dict[str, Any]) -> dict[str, Any]:
@@ -197,6 +247,10 @@ _WRITE_HINT = (
     "Re-running or dispatching needs Actions write (classic 'repo' + 'workflow' "
     "scopes; fine-grained: Actions read and write). dispatch_workflow also "
     "requires the workflow to declare a workflow_dispatch trigger on that ref."
+)
+_MERGE_HINT = (
+    "Merging needs Pull requests write plus Actions/checks read. GitHub "
+    "repository rules and required reviews still apply; the MCP never bypasses them."
 )
 
 
@@ -429,7 +483,7 @@ async def dispatch_workflow(params: DispatchWorkflowInput) -> dict:
             data={
                 "workflow": params.workflow,
                 "ref": params.ref,
-                "inputs": params.inputs,
+                "input_names": sorted(params.inputs),
                 "message": "Dispatch accepted. GitHub creates the run asynchronously; "
                 "find it with list_workflow_runs(workflow, branch=ref, event='workflow_dispatch').",
             }
@@ -440,6 +494,95 @@ async def dispatch_workflow(params: DispatchWorkflowInput) -> dict:
         return handle_tool_error(exc, context="Dispatch workflow failed")
 
 
+async def merge_pull_request(params: MergePullRequestInput) -> dict:
+    """Merge an open PR only when its exact head and all observed checks are ready.
+
+    GitHub remains the final authority for required reviews and branch
+    protection; this tool never requests an admin bypass.
+    """
+    try:
+        await get_service_factory().ensure_auth()
+        base = _repo_path(params)
+        pr = await _get(f"{base}/pulls/{params.pull_number}")
+        if pr.get("state") != "open" or pr.get("merged"):
+            return build_error_response(
+                error_type="validation",
+                message=f"PR #{params.pull_number} is not open.",
+                suggestion="Only open, unmerged pull requests can be merged.",
+            )
+        if pr.get("draft"):
+            return build_error_response(
+                error_type="validation",
+                message=f"PR #{params.pull_number} is a draft.",
+                suggestion="Mark the pull request ready for review before merging.",
+            )
+
+        head_sha = (pr.get("head") or {}).get("sha")
+        if head_sha != params.expected_head_sha:
+            return build_error_response(
+                error_type="validation",
+                message="The pull request head changed since it was reviewed.",
+                suggestion=f"Read the latest PR details and retry with its current head SHA ({head_sha or 'unavailable'}).",
+            )
+        if pr.get("mergeable") is not True or pr.get("mergeable_state") != "clean":
+            return build_error_response(
+                error_type="validation",
+                message=f"PR #{params.pull_number} is not confirmed mergeable.",
+                suggestion="Resolve conflicts and wait for GitHub to calculate a clean mergeable state.",
+            )
+
+        checks_result = await get_pr_checks(
+            GetPrChecksInput(owner=params.owner, repo=params.repo, pr_number=params.pull_number)
+        )
+        if not checks_result.get("ok"):
+            return checks_result
+        checks = checks_result["data"]
+        if checks.get("head_sha") != params.expected_head_sha:
+            return build_error_response(
+                error_type="validation",
+                message="The PR head changed while merge preconditions were checked.",
+                suggestion="Read the latest PR details and retry with its current head SHA.",
+            )
+        if checks.get("overall") != "passed":
+            return build_error_response(
+                error_type="validation",
+                message=f"PR checks are {checks.get('overall', 'unknown')}; merge was not attempted.",
+                suggestion="Wait for every check to pass, then retry. Missing checks are not treated as success.",
+            )
+
+        result = await _put(
+            f"{base}/pulls/{params.pull_number}/merge",
+            {"sha": params.expected_head_sha, "merge_method": params.merge_method},
+        )
+        if result.get("merged") is not True:
+            return build_error_response(
+                error_type="validation",
+                message="GitHub did not confirm that the pull request was merged.",
+                suggestion="Check the PR state and repository branch protections before retrying.",
+            )
+        return ToolSuccess(
+            data={
+                "pull_number": params.pull_number,
+                "merged": True,
+                "merge_method": params.merge_method,
+                "head_sha": params.expected_head_sha,
+                "merge_commit_sha": result.get("sha"),
+                "url": pr.get("html_url"),
+                "message": result.get("message", "Pull request merged."),
+            }
+        ).model_dump()
+    except CLIError as exc:
+        if any(code in exc.stderr for code in ("HTTP 405", "HTTP 409", "HTTP 422")):
+            return build_error_response(
+                error_type="validation",
+                message="GitHub refused the merge; repository protections or current PR state may have changed.",
+                suggestion="Re-read the PR and checks. This tool never bypasses repository protections.",
+            )
+        return _cli_error("merge_pull_request", exc, _MERGE_HINT)
+    except Exception as exc:
+        return handle_tool_error(exc, context="Merge pull request failed")
+
+
 CI_TOOLS = [
     list_workflows,
     list_workflow_runs,
@@ -448,6 +591,7 @@ CI_TOOLS = [
     get_job_logs,
     rerun_workflow_run,
     dispatch_workflow,
+    merge_pull_request,
 ]
 
 __all__ = ["CI_TOOLS", *(fn.__name__ for fn in CI_TOOLS)]

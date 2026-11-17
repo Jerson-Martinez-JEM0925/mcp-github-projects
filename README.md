@@ -160,7 +160,7 @@ The server registers **130 tools** at `MCP_ACCESS_LEVEL=full` (fewer at `read`/`
 | **Repository provisioning** | Create a user or organization repository with explicit visibility | `create_repository` |
 | **Planning & Workflows** | Sprints, standups, epics, triage, releases | `sprint_planning`, `create_epic`, `close_sprint`, `daily_standup`, `sprint_review`, `triage_new_issues`, `escalate_overdue`, `generate_release_notes`, `complete_issue` |
 | **PR ↔ Issue lifecycle** | Verify acceptance, link PRs, gate closures | `verify_acceptance_criteria`, `get_pr_linked_issues`, `validate_issue_closure_readiness`, `close_issue_on_pr_merge` |
-| **CI / GitHub Actions** | Read PR checks, runs, jobs and logs; re-run or dispatch workflows | `get_pr_checks`, `list_workflows`, `list_workflow_runs`, `get_workflow_run`, `get_job_logs`, `rerun_workflow_run`, `dispatch_workflow` |
+| **CI / GitHub Actions** | Read PR checks, merge a ready PR, inspect runs, re-run or dispatch workflows | `get_pr_checks`, `merge_pull_request`, `list_workflows`, `list_workflow_runs`, `get_workflow_run`, `get_job_logs`, `rerun_workflow_run`, `dispatch_workflow` |
 | **Metrics** | Board and sprint statistics | `get_project_stats`, `get_sprint_summary` |
 | **Diagnostics** | Report effective access level, scope lock, and target | `server_info` |
 | **Board structure** | Plan/apply Status (single-select) options without losing item values; list/create views | `set_field_options`, `list_project_views`, `create_project_view` |

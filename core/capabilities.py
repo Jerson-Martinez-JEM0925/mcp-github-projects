@@ -181,6 +181,7 @@ TOOL_CAPABILITIES: dict[str, FrozenSet[Capability]] = {
     "get_job_logs": frozenset({AR}),
     "rerun_workflow_run": frozenset({AW}),
     "dispatch_workflow": frozenset({AW}),
+    "merge_pull_request": frozenset({PRW, PRR, AR}),
 
     # --- Response quality and automation diagnostics ---
     "repository_health_summary": frozenset({IR}),

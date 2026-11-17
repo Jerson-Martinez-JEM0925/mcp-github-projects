@@ -28,6 +28,7 @@ from tools.ci.actions import (  # noqa: E402
     GetWorkflowRunInput,
     ListWorkflowRunsInput,
     ListWorkflowsInput,
+    MergePullRequestInput,
     RerunWorkflowRunInput,
     dispatch_workflow,
     get_job_logs,
@@ -35,6 +36,7 @@ from tools.ci.actions import (  # noqa: E402
     get_workflow_run,
     list_workflow_runs,
     list_workflows,
+    merge_pull_request,
     rerun_workflow_run,
 )
 
@@ -225,6 +227,10 @@ def test_bounds_are_enforced() -> None:
         GetJobLogsInput(job_id=1, tail_lines=5000)
     with pytest.raises(ValueError):
         DispatchWorkflowInput(workflow="ci.yaml", ref="main", inputs={str(i): "v" for i in range(11)})
+    with pytest.raises(ValueError):
+        DispatchWorkflowInput(workflow="../release.yaml", ref="main")
+    with pytest.raises(ValueError):
+        DispatchWorkflowInput(workflow="ci.yaml", ref="main..unsafe")
 
 
 # ── Write tools ─────────────────────────────────────────────────────────────
@@ -242,7 +248,7 @@ async def test_rerun_paths(failed_only: bool, suffix: str) -> None:
 @pytest.mark.anyio
 async def test_dispatch_encodes_ref_and_inputs() -> None:
     gh = RoutingGH()
-    await _with(
+    result = await _with(
         gh,
         dispatch_workflow,
         DispatchWorkflowInput(workflow="release.yaml", ref="main", inputs={"version": "1.1.0"}),
@@ -251,6 +257,71 @@ async def test_dispatch_encodes_ref_and_inputs() -> None:
         "api", "--method", "POST", f"{REPO}/actions/workflows/release.yaml/dispatches",
         "-f", "ref=main", "-f", "inputs[version]=1.1.0",
     ]]
+    assert result["data"]["input_names"] == ["version"]
+    assert "inputs" not in result["data"]
+
+
+def _merge_routes(head_sha: str, *, conclusion: str = "success", draft: bool = False) -> dict:
+    return {
+        f"{REPO}/pulls/40": {
+            "state": "open", "merged": False, "draft": draft,
+            "head": {"sha": head_sha}, "mergeable": True, "mergeable_state": "clean",
+            "html_url": "https://github.com/octo-org/octo-repo/pull/40",
+        },
+        f"{REPO}/commits/{head_sha}/check-runs": {
+            "check_runs": [{"name": "ci", "status": "completed", "conclusion": conclusion}],
+        },
+        f"{REPO}/commits/{head_sha}/status": {"statuses": []},
+        f"{REPO}/pulls/40/merge": {"merged": True, "sha": "b" * 40, "message": "Merged"},
+    }
+
+
+@pytest.mark.anyio
+async def test_merge_requires_exact_head_and_all_checks() -> None:
+    head_sha = "a" * 40
+    gh = RoutingGH(_merge_routes(head_sha))
+    result = await _with(
+        gh, merge_pull_request,
+        MergePullRequestInput(pull_number=40, expected_head_sha=head_sha, merge_method="squash"),
+    )
+    assert result["ok"] is True
+    assert result["data"]["merged"] is True
+    assert result["data"]["merge_commit_sha"] == "b" * 40
+    assert gh.calls[-1] == [
+        "api", "--method", "PUT", f"{REPO}/pulls/40/merge",
+        "-f", f"sha={head_sha}", "-f", "merge_method=squash",
+    ]
+
+
+@pytest.mark.anyio
+async def test_merge_refuses_stale_head_failed_checks_and_drafts() -> None:
+    head_sha = "a" * 40
+    stale = RoutingGH(_merge_routes(head_sha))
+    result = await _with(
+        stale, merge_pull_request,
+        MergePullRequestInput(pull_number=40, expected_head_sha="c" * 40, merge_method="merge"),
+    )
+    assert result["ok"] is False
+    assert "head changed" in result["message"]
+    assert len(stale.calls) == 1
+
+    failed = RoutingGH(_merge_routes(head_sha, conclusion="failure"))
+    result = await _with(
+        failed, merge_pull_request,
+        MergePullRequestInput(pull_number=40, expected_head_sha=head_sha, merge_method="rebase"),
+    )
+    assert result["ok"] is False
+    assert "checks are failed" in result["message"]
+    assert not any(path.endswith("/merge") for call in failed.calls for path in call)
+
+    draft = RoutingGH(_merge_routes(head_sha, draft=True))
+    result = await _with(
+        draft, merge_pull_request,
+        MergePullRequestInput(pull_number=40, expected_head_sha=head_sha, merge_method="rebase"),
+    )
+    assert result["ok"] is False
+    assert "draft" in result["message"]
+    assert len(draft.calls) == 1
 
 
 # ── Scope lock, overrides and errors ────────────────────────────────────────

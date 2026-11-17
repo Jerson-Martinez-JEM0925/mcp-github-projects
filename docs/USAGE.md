@@ -1,6 +1,6 @@
 # MCP GitHub Project Management — Usage Guide
 
-Usage guide for the GitHub Project Management MCP server, with examples per category. The authoritative, generated list of every tool (151 at `MCP_ACCESS_LEVEL=full`) with its access tier and capabilities is [TOOLS.md](TOOLS.md).
+Usage guide for the GitHub Project Management MCP server, with examples per category. The authoritative, generated list of every tool and its access tier/capabilities is [TOOLS.md](TOOLS.md).
 
 ## Project Configuration
 
@@ -23,7 +23,7 @@ The main categories below; the extended capability suite (60 tools), repository/
 | Milestones | create_milestone, update_milestone, close_milestone, list_milestones | 4 |
 | Labels | create_label, list_labels | 2 |
 | Stats & Planning | get_project_stats, get_sprint_summary, sprint_planning, generate_release_notes, link_pull_request, create_pull_request, update_pull_request | 7 |
-| CI / Actions | list_workflows, list_workflow_runs, get_workflow_run, get_pr_checks, get_job_logs, rerun_workflow_run, dispatch_workflow | 7 |
+| CI / Actions | list_workflows, list_workflow_runs, get_workflow_run, get_pr_checks, get_job_logs, rerun_workflow_run, dispatch_workflow, merge_pull_request | 8 |
 | Response quality | repository_health_summary, pull_request_lifecycle_summary, issue_activity_digest, workflow_run_diagnostic_summary, check_conclusion_summary, label_milestone_consistency_report, issue_metadata_consistency_report, issue_closure_readiness_report, paginated_issue_page, response_diagnostics | 10 |
 | Workflows | complete_issue, daily_standup, sprint_review, triage_new_issues, escalate_overdue, handoff_issue, create_epic, close_sprint, blocked_report | 9 |
 
@@ -690,10 +690,12 @@ Output: { id, number, name, layout: "TABLE", filter }
 
 ## ✅ CI / GitHub Actions
 
-Verify a PR's checks and recover a workflow run without leaving the MCP. All
-tools default to the configured repository; `owner`/`repo` overrides are
-refused when `GH_PROJECT_SCOPE_LOCK=true`. Token needs Actions/Checks read
-(and Actions write + classic `workflow` scope for the two write tools).
+Verify PR checks, trigger an existing `workflow_dispatch`, or merge a ready
+pull request without leaving the MCP. All tools default to the configured
+repository; `owner`/`repo` overrides are refused when
+`GH_PROJECT_SCOPE_LOCK=true`. Dispatch/re-run require Actions write (and the
+classic `workflow` scope). Merging also requires Pull requests write and
+Actions/checks read.
 
 | Tool | Access | Purpose |
 |------|--------|---------|
@@ -704,13 +706,28 @@ refused when `GH_PROJECT_SCOPE_LOCK=true`. Token needs Actions/Checks read
 | `get_job_logs` | read | Last `tail_lines` (≤ 2000) of a job log, terminal escapes stripped, secrets redacted. |
 | `rerun_workflow_run` | write | Re-run failed jobs (default) or the whole run (`failed_only: false`). |
 | `dispatch_workflow` | write | Trigger a `workflow_dispatch` run on `ref`, with up to 10 string `inputs`. |
+| `merge_pull_request` | write | Merge an open, non-draft PR only for its expected head SHA, clean mergeability and passing checks; repository protections remain enforced. |
 
 ```bash
 make call TOOL=get_pr_checks ARGS='{"pr_number": 40}'
 make call TOOL=list_workflow_runs ARGS='{"branch": "feat/x", "status": "failure", "limit": 5}'
 make call TOOL=get_workflow_run ARGS='{"run_id": 123456789}'
 make call TOOL=get_job_logs ARGS='{"job_id": 987654321, "tail_lines": 100}'
+make call TOOL=dispatch_workflow ARGS='{"workflow": "ci.yaml", "ref": "feat/example", "inputs": {"mode": "check"}}'
+make call TOOL=merge_pull_request ARGS='{"pull_number": 40, "expected_head_sha": "<40-char-head-sha>", "merge_method": "squash"}'
 ```
+
+`dispatch_workflow` only triggers workflows that declare `workflow_dispatch`;
+it reports accepted dispatch metadata, not a completed run. Find the run with
+`list_workflow_runs` using the workflow, ref/branch, and
+`event="workflow_dispatch"`. Input values are not echoed in the response.
+
+`merge_pull_request` is an explicit mutation, not auto-merge. It refuses a
+closed or draft PR, a changed head SHA, a non-clean mergeability state, and
+any failed, pending, or missing check set. The GitHub merge request includes
+the expected SHA to guard against races. GitHub remains authoritative for
+required approvals and branch protection; the tool never requests an admin
+bypass. A successful response includes the merge commit SHA.
 
 ---
 
