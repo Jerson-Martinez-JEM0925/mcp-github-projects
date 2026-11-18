@@ -340,7 +340,7 @@ async def test_resolve_item_id_on_user_board() -> None:
                                     "number": 7,
                                     "title": "t",
                                     "body": "",
-                                    "url": "u",
+                                    "url": "https://github.com/octocat/demo/issues/7",
                                     "assignees": {"nodes": []},
                                     "labels": {"nodes": []},
                                 },
@@ -582,3 +582,80 @@ async def test_add_item_rejects_missing_cli_item_id() -> None:
     )
     with pytest.raises(ValidationError, match="no project item ID"):
         await svc.add_item(_metadata(), 42)
+
+
+# ── resolve_item_id on a board shared by several repositories ────────────────
+
+
+def _item(node_id: str, number: int, url: str, typename: str = "Issue") -> dict:
+    return {
+        "id": node_id,
+        "content": {
+            "__typename": typename,
+            "number": number,
+            "title": "t",
+            "body": "",
+            "url": url,
+            "assignees": {"nodes": []},
+            "labels": {"nodes": []},
+        },
+        "fieldValues": {"nodes": []},
+    }
+
+
+def _board(*nodes: dict) -> dict:
+    return {
+        "data": {
+            "user": {
+                "projectV2": {
+                    "items": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": list(nodes),
+                    }
+                }
+            }
+        }
+    }
+
+
+def _context_for(repository: str | None) -> GitHubContext:
+    target = ProjectTarget(
+        owner_type="user", owner_login="octocat", project_number=11, repository=repository
+    )
+    return GitHubContext(target=target, token_provider=lambda: "t")
+
+
+@pytest.mark.anyio
+async def test_resolve_item_id_matches_the_configured_repository_only() -> None:
+    """Issue #81 of another repo on the same board must not be picked for PR #81 of this repo."""
+    payload = _board(
+        _item("ITEM_OTHER", 81, "https://github.com/octocat/other/issues/81"),
+        _item("ITEM_DEMO", 81, "https://github.com/octocat/demo/pull/81", "PullRequest"),
+    )
+    svc = ProjectService(
+        graphql_client=_FakeGraphQL(payload), gh_client=object(), context=_context_for("demo")
+    )
+    assert await svc.resolve_item_id(_metadata(), 81) == "ITEM_DEMO"
+
+
+@pytest.mark.anyio
+async def test_resolve_item_id_returns_none_when_only_other_repositories_match() -> None:
+    payload = _board(_item("ITEM_OTHER", 5, "https://github.com/octocat/other/issues/5"))
+    svc = ProjectService(
+        graphql_client=_FakeGraphQL(payload), gh_client=object(), context=_context_for("demo")
+    )
+    assert await svc.resolve_item_id(_metadata(), 5) is None
+
+
+@pytest.mark.anyio
+async def test_resolve_item_id_without_repository_rejects_ambiguous_numbers() -> None:
+    payload = _board(
+        _item("ITEM_A", 3, "https://github.com/octocat/a/issues/3"),
+        _item("ITEM_B", 3, "https://github.com/octocat/b/issues/3"),
+        _item("ITEM_C", 4, "https://github.com/octocat/a/issues/4"),
+    )
+    svc = ProjectService(
+        graphql_client=_FakeGraphQL(payload), gh_client=object(), context=_context_for(None)
+    )
+    assert await svc.resolve_item_id(_metadata(), 3) is None
+    assert await svc.resolve_item_id(_metadata(), 4) == "ITEM_C"

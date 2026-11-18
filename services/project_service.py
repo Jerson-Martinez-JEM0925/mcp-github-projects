@@ -231,15 +231,32 @@ class ProjectService:
             metadata: Discovered project metadata.
             issue_or_pr_number: The issue or pull-request number to locate.
 
+        A Project V2 board can hold items from several repositories, and
+        issue/PR numbers are only unique within one repository. When the
+        context targets a repository, only items whose URL belongs to that
+        repository match, so ``#81`` of another repository on the same board
+        is never returned. Without a repository, a number that matches items
+        of more than one repository is ambiguous and resolves to None.
+
         Returns:
             The project item node ID, or None if the number is not on the
-            board.
+            board (or is ambiguous across repositories).
         """
         items = await self._fetch_all_items(metadata, get_settings().max_items)
-        for item in items:
-            if item.issue_number == issue_or_pr_number:
-                return item.node_id
-        return None
+        matches = [item for item in items if item.issue_number == issue_or_pr_number]
+        repository = self._context.target.repository_full_name
+        if repository:
+            prefix = f"https://github.com/{repository}/".lower()
+            matches = [
+                item for item in matches if (item.issue_url or "").lower().startswith(prefix)
+            ]
+        elif len({_repository_of(item.issue_url) for item in matches}) > 1:
+            logger.warning(
+                "Item #%d is ambiguous: it exists in several repositories of the board.",
+                issue_or_pr_number,
+            )
+            return None
+        return matches[0].node_id if matches else None
 
     async def resolve_content_id(
         self,
@@ -925,3 +942,9 @@ class ProjectService:
             f"Invalid value '{value}' for field '{field.name}'. "
             f"Valid options: {', '.join(valid_options)}"
         )
+
+
+def _repository_of(url: str | None) -> str:
+    """Return ``owner/repo`` (lower case) from an issue/PR URL, or '' when unknown."""
+    parts = (url or "").split("/")
+    return "/".join(parts[3:5]).lower() if len(parts) > 4 and parts[2] == "github.com" else ""
