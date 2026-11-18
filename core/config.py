@@ -225,13 +225,22 @@ class GitHubProjectSettings(BaseSettings):
         description=(
             "Comma-separated path prefixes commit_files may touch "
             "(GH_PROJECT_WRITE_PATH_PREFIXES); empty allows any path except "
-            ".github/."
+            ".github/, unless an exact workflow path is separately allowlisted."
+        ),
+    )
+    allowed_github_workflow_paths: str = Field(
+        default="",
+        max_length=4_000,
+        description=(
+            "Comma-separated exact .github/workflows/ paths commit_files may "
+            "touch (GH_PROJECT_ALLOWED_GITHUB_WORKFLOW_PATHS); empty denies all."
         ),
     )
 
     # scope_lock reads GH_PROJECT_SCOPE_LOCK (prefixed) — parity concept with
     # mcp-monday-projects' MONDAY_WORKSPACE_ID. When true, every tool is
-    # confined to the configured org/repo/project target.
+    # confined to the configured GH_PROJECT_ORG_NAME / GH_PROJECT_REPO_NAME /
+    # GH_PROJECT_PROJECT_NUMBER; a call targeting another scope is refused.
     scope_lock: bool = Field(
         default=False,
         description=(
@@ -243,12 +252,12 @@ class GitHubProjectSettings(BaseSettings):
         ),
     )
 
-    # ── Timeouts & Retry ─────────────────────────────────────────
+    # ── Timeouts & Retry ────────────────────────────────────────
     timeout_seconds: int = Field(default=10, ge=1, le=120)
     retry_delay_seconds: float = Field(default=2.0, ge=0, le=60)
     retry_attempts: int = Field(default=1, ge=0, le=5)
 
-    # ── Cache ────────────────────────────────────────────────────
+    # ── Cache ───────────────────────────────────────────────────
     cache_ttl_hours: int = Field(default=24, ge=1, le=720)
     cache_path: Path = Field(default_factory=_default_cache_path)
 
@@ -422,6 +431,20 @@ class GitHubProjectSettings(BaseSettings):
         return tuple(
             p.strip().lstrip("/") for p in self.write_path_prefixes.split(",") if p.strip()
         )
+
+    def github_workflow_paths(self) -> tuple[str, ...]:
+        """Return safe exact workflow paths explicitly allowed for commits."""
+        paths: list[str] = []
+        for raw_path in self.allowed_github_workflow_paths.split(","):
+            path = raw_path.strip().lstrip("/")
+            parts = path.split("/")
+            if (
+                path.startswith(".github/workflows/")
+                and path.endswith((".yml", ".yaml"))
+                and all(part not in ("", ".", "..") for part in parts)
+            ):
+                paths.append(path)
+        return tuple(dict.fromkeys(paths))
 
 
 @lru_cache

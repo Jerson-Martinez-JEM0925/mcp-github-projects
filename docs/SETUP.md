@@ -49,7 +49,7 @@ echo 'export GITHUB_TOKEN=ghp_...' >> ~/.bashrc
 
 # Option C: Use .env file (auto-loaded by Docker --env-file)
 echo 'GITHUB_TOKEN=ghp_...' > .env
-# ⚠️ .env is in .gitignore — never commit it
+# .env is in .gitignore — never commit it
 ```
 
 ### CI/CD (GitHub Actions)
@@ -234,8 +234,8 @@ cp profiles/user-example.env .env
 
 When a named profile is loaded by `GH_PROJECT_PROFILE`, the values from that
 profile file take precedence over process-level `GH_PROJECT_*` variables for
-its target and cache namespace. Profile files must not contain tokens, and the
-metadata cache is namespaced by owner, repository, and project number.
+its target and cache namespace. Profile files must not contain tokens, and
+the metadata cache is namespaced by owner, repository, and project number.
 
 ### Using Environment Variables
 
@@ -364,7 +364,8 @@ of its own) in the `mcpServers` entry.
 | `MCP_SERVER_INSTRUCTIONS` | built-in text | Replaces the built-in instructions (max 4000 chars) |
 | `MCP_WRITE_TOOL_ALLOWLIST` | unset | Comma-separated write/delete tools to expose; read tools are unaffected, `MCP_ACCESS_LEVEL` still applies first, unknown names fail at startup |
 | `GH_PROJECT_WRITE_BRANCH_PREFIXES` | `chatbot/` | Branch prefixes `create_branch` / `commit_files` may write to; the default branch is always refused |
-| `GH_PROJECT_WRITE_PATH_PREFIXES` | unset (any) | Path prefixes `commit_files` may touch; `.github/` is always refused |
+| `GH_PROJECT_WRITE_PATH_PREFIXES` | unset (any) | Path prefixes `commit_files` may touch; paths under `.github/` are denied unless separately allowlisted |
+| `GH_PROJECT_ALLOWED_GITHUB_WORKFLOW_PATHS` | unset (deny all) | Exact `.github/workflows/*.yml` or `.yaml` paths `commit_files` may touch; every other `.github/` path stays denied |
 
 The repository's documentation is readable with `list_repository_directory`,
 `get_repository_file` and `search_repository_code`; pull requests with
@@ -383,6 +384,21 @@ MCP_WRITE_TOOL_ALLOWLIST=create_branch,commit_files,create_pull_request
 GH_PROJECT_WRITE_BRANCH_PREFIXES=docs/architecture/adr-,chatbot/
 GH_PROJECT_WRITE_PATH_PREFIXES=docs/
 ```
+
+For a narrowly scoped workflow-editing instance, configure both a directory
+prefix and exact file paths from the target repository. These example names
+are illustrative only; the MCP does not ship with repository-specific paths.
+The exact allowlist is an additional fence and does not grant access to other
+workflows, actions, or repository metadata:
+
+```env
+GH_PROJECT_WRITE_PATH_PREFIXES=docs/,.github/workflows/
+GH_PROJECT_ALLOWED_GITHUB_WORKFLOW_PATHS=.github/workflows/example-deploy.yml,.github/workflows/example-release.yml
+```
+
+Keep this permission limited to trusted operators: workflow changes can alter
+CI and deployment behavior. Commits still require an allowed non-default
+branch and a pull request.
 
 ### MCP Client Integration
 
@@ -481,7 +497,7 @@ Cache files have `0600` permissions and are never shared between targets.
 | "Insufficient token scopes" | Token missing permissions | Regenerate with `repo`, `project`, `read:org` |
 | "Permission denied" on cache | Container user issue | Image uses `/home/mcp/.cache` (writable) |
 | Token works locally but not in CI | Secret not set | Check Settings → Secrets → `GH_TOKEN` |
-| Fine-grained token "scope error" | FG tokens don't report scopes | MCP auto-detects and skips validation |
+| Fine-grained token "scope error" | FG tokens don't report scopes | MCP auto-detects and skips scope validation |
 
 The production image installs only `requirements.txt`. `make test` and the CI
 test job build a separate image with pinned `requirements-dev.txt`, including

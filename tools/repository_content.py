@@ -20,9 +20,11 @@ Write tools (``contents.write``), fenced by configuration:
 * ``commit_files`` — one commit on such a branch through the GraphQL
   ``createCommitOnBranch`` mutation, so the commit is attributed to the token
   owner (the end user with per-request credentials) and verified by GitHub.
-  Paths under ``.github/`` are always refused and, when
-  ``GH_PROJECT_WRITE_PATH_PREFIXES`` is set, every path must start with one of
-  its prefixes. Changes reach the default branch only through a pull request.
+  Paths under ``.github/`` are refused unless an exact workflow file is named
+  by ``GH_PROJECT_ALLOWED_GITHUB_WORKFLOW_PATHS``. When
+  ``GH_PROJECT_WRITE_PATH_PREFIXES`` is set, every path must also start with
+  one of its prefixes. Changes reach the default branch only through a pull
+  request.
 """
 from __future__ import annotations
 
@@ -178,6 +180,73 @@ class GetFileInput(BaseModel):
     max_chars: int = Field(default=20_000, ge=500, le=MAX_FILE_CHARS, description="Maximum characters returned in this call.")
 
 
+def _matches(path: str, pattern: str) -> bool:
+    if not pattern:
+        return True
+    lowered = path.lower()
+    needle = pattern.lower()
+    if any(ch in needle for ch in "*?["):
+        return fnmatch.fnmatch(lowered, needle) or fnmatch.fnmatch(lowered.rsplit("/", 1)[-1], needle)
+    return needle in lowered
+
+
+async def list_repository_directory(params: ListDirectoryInput) -> dict:
+    """List files and folders of the configured repository (one level, or the whole subtree with recursive=true).
+
+    Use it to discover documentation before answering: e.g. path='docs',
+    recursive=true, name_contains='*.md'. Returns path, type (file/dir),
+    size and the html URL; `truncated` is true when more entries matched
+    than `limit`.
+    """
+    try:
+        path = _clean_path(params.path, allow_empty=True)
+        await get_service_factory().ensure_auth()
+        ref = params.ref.strip() or await _default_branch()
+        repo = _repo()
+        entries: list[dict[str, Any]] = []
+        upstream_truncated = False
+        if params.recursive:
+            tree = await _api(f"repos/{repo}/git/trees/{quote(ref, safe='')}?recursive=1")
+            upstream_truncated = bool(tree.get("truncated")) if isinstance(tree, dict) else False
+            prefix = f"{path}/" if path else ""
+            for node in tree.get("tree", []) if isinstance(tree, dict) else []:
+                node_path = str(node.get("path", ""))
+                if prefix and not node_path.startswith(prefix):
+                    continue
+                kind = "dir" if node.get("type") == "tree" else "file"
+                entries.append({"path": node_path, "type": kind, "size": node.get("size")})
+        else:
+            suffix = f"/{quote(path, safe='/')}" if path else ""
+            listing = await _api(f"repos/{repo}/contents{suffix}?ref={quote(ref, safe='')}")
+            if isinstance(listing, dict):  # `path` is a file, not a folder
+                listing = [listing]
+            for node in listing if isinstance(listing, list) else []:
+                entries.append({"path": node.get("path"), "type": node.get("type"), "size": node.get("size")})
+        matched = [e for e in entries if _matches(str(e["path"]), params.name_contains.strip())]
+        matched.sort(key=lambda e: (e["type"] != "dir", str(e["path"])))
+        rows = matched[: params.limit]
+        base = f"https://github.com/{repo}"
+        for row in rows:
+            view = "tree" if row["type"] == "dir" else "blob"
+            row["url"] = f"{base}/{view}/{ref}/{quote(str(row['path']), safe='/')}"
+        return ToolSuccess(
+            data={
+                "repository": repo,
+                "ref": ref,
+                "path": path,
+                "recursive": params.recursive,
+                "count": len(rows),
+                "matched": len(matched),
+                "truncated": len(matched) > len(rows) or upstream_truncated,
+                "entries": rows,
+            }
+        ).model_dump()
+    except ValueError as exc:
+        return _invalid(str(exc), "Pass a repository-relative path such as 'docs/architecture'.")
+    except Exception as exc:
+        return handle_tool_error(exc, context="List repository directory failed")
+
+
 async def get_repository_file(params: GetFileInput) -> dict:
     """Read the text of one file from the configured repository (Markdown, YAML, code...), paged by characters.
 
@@ -220,9 +289,6 @@ async def get_repository_file(params: GetFileInput) -> dict:
         return _invalid(str(exc), "Pass a repository-relative file path such as 'README.md'.")
     except Exception as exc:
         return handle_tool_error(exc, context="Get repository file failed")
-
-
-# ── Read: code search ────────────────────────────────────────────────────────
 
 
 class SearchCodeInput(BaseModel):
@@ -302,9 +368,6 @@ async def search_repository_code(params: SearchCodeInput) -> dict:
         return handle_tool_error(exc, context="Search repository code failed")
 
 
-# ── Write: governed branch + commit ──────────────────────────────────────────
-
-
 def _check_branch(name: str, default_branch: str) -> str | None:
     """Return a refusal reason for `name`, or None when it may be written."""
     if not _BRANCH_RE.match(name) or ".." in name or name.endswith(("/", ".lock")) or "//" in name:
@@ -321,9 +384,14 @@ def _check_branch(name: str, default_branch: str) -> str | None:
 
 
 def _check_write_path(path: str) -> str | None:
-    if any(path.startswith(prefix) or path == prefix.rstrip("/") for prefix in _FORBIDDEN_PREFIXES):
-        return f"'{path}': files under .github/ cannot be changed by this tool"
-    prefixes = get_settings().path_prefixes()
+    settings = get_settings()
+    if path == ".github" or any(path.startswith(prefix) for prefix in _FORBIDDEN_PREFIXES):
+        if path not in settings.github_workflow_paths():
+            return (
+                f"'{path}': .github files are denied unless this exact workflow "
+                "path is listed in GH_PROJECT_ALLOWED_GITHUB_WORKFLOW_PATHS"
+            )
+    prefixes = settings.path_prefixes()
     if prefixes and not any(path.startswith(prefix) for prefix in prefixes):
         return f"'{path}' is outside the allowed paths {list(prefixes)} (GH_PROJECT_WRITE_PATH_PREFIXES)"
     return None
@@ -399,7 +467,7 @@ mutation($input: CreateCommitOnBranchInput!) {
 async def commit_files(params: CommitFilesInput) -> dict:
     """Commit file additions/updates/deletions to an allowed branch as the authenticated user (createCommitOnBranch).
 
-    Refuses the default branch, paths under .github/ and paths outside
+    Refuses the default branch, unlisted .github paths, and paths outside
     GH_PROJECT_WRITE_PATH_PREFIXES. Always follow with create_pull_request so
     the change is reviewed; nothing reaches the default branch directly.
     """

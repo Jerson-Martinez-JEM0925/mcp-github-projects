@@ -47,6 +47,7 @@ def configured_target(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("GH_PROJECT_PROJECT_NUMBER", "7")
     monkeypatch.setenv("GH_PROJECT_WRITE_BRANCH_PREFIXES", "docs/architecture/adr-,chatbot/")
     monkeypatch.setenv("GH_PROJECT_WRITE_PATH_PREFIXES", "docs/")
+    monkeypatch.setenv("GH_PROJECT_ALLOWED_GITHUB_WORKFLOW_PATHS", "")
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
@@ -222,6 +223,59 @@ async def test_commit_refuses_forbidden_paths(path: str) -> None:
     gql = FakeGraphQL()
     with use_service_factory(gh_client=FakeGH(REPO_META), graphql_client=gql):
         result = await commit_files(CommitFilesInput(branch="chatbot/x", message="docs: x", files=[FileChange(path=path, content="x")]))
+    assert result["ok"] is False
+    assert gql.calls == []
+
+
+@pytest.mark.anyio
+async def test_commit_allows_exactly_allowlisted_workflow_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GH_PROJECT_WRITE_PATH_PREFIXES", "docs/,.github/workflows/")
+    monkeypatch.setenv(
+        "GH_PROJECT_ALLOWED_GITHUB_WORKFLOW_PATHS",
+        ".github/workflows/example-deploy.yml",
+    )
+    get_settings.cache_clear()
+    gql = FakeGraphQL()
+    gh = FakeGH({
+        **REPO_META,
+        f"{REPO}/git/ref/heads/chatbot/x": {"object": {"sha": "b" * 40}},
+    })
+    with use_service_factory(gh_client=gh, graphql_client=gql):
+        result = await commit_files(CommitFilesInput(
+            branch="chatbot/x",
+            message="ci(workflows): update the approved example workflow",
+            files=[FileChange(
+                path=".github/workflows/example-deploy.yml",
+                content="name: deploy\n",
+            )],
+        ))
+    assert result["ok"] is True
+    assert result["data"]["changed"] == [".github/workflows/example-deploy.yml"]
+    assert gql.calls
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("path", [
+    ".github/workflows/unlisted.yaml",
+    ".github/actions/custom/action.yaml",
+])
+async def test_commit_denies_unlisted_github_paths_even_with_workflow_allowlist(
+    path: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GH_PROJECT_WRITE_PATH_PREFIXES", "docs/,.github/workflows/")
+    monkeypatch.setenv(
+        "GH_PROJECT_ALLOWED_GITHUB_WORKFLOW_PATHS",
+        ".github/workflows/example-deploy.yml",
+    )
+    get_settings.cache_clear()
+    gql = FakeGraphQL()
+    with use_service_factory(gh_client=FakeGH(REPO_META), graphql_client=gql):
+        result = await commit_files(CommitFilesInput(
+            branch="chatbot/x",
+            message="ci(workflows): test restricted path",
+            files=[FileChange(path=path, content="x")],
+        ))
     assert result["ok"] is False
     assert gql.calls == []
 
