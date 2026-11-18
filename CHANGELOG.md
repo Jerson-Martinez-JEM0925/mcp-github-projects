@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Project item lookup on multi-repository boards**: `update_project_item_fields` (and every tool that resolves an issue/PR number to a board item) matched only the number, so on a Project V2 board shared by several repositories it could update `#81` of another repository instead of the configured one. `resolve_item_id` now matches the configured repository (by the item URL) and, when no repository is configured, refuses numbers that are ambiguous across repositories.
+
 - **`list_sub_issues` pagination**: parents with more than 50 sub-issues were silently truncated to the first 50. The tool now pages through every sub-issue (100 per request, following the GraphQL cursor) and also returns `total_count`.
 
 ### Added
