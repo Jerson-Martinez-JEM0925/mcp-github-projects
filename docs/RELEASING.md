@@ -27,7 +27,24 @@ handshake advertises it as the server version.
    ```
 
 2. Merge the PR once every check is green.
-3. Tag the merge commit on `main` and push the tag:
+3. Trigger the release — either on demand or by pushing the tag yourself:
+
+   **On demand (no local git needed):** Actions → **Release** → *Run
+   workflow* with `tag=vX.Y.Z` (and optionally `ref`, default `main`). The
+   run creates and pushes the tag when it does not exist, then builds,
+   publishes the image and the GitHub release inside that same run — the
+   `GITHUB_TOKEN` tag push does not retrigger the workflow, so nothing runs
+   twice. Equivalent CLI:
+
+   ```bash
+   gh workflow run release.yaml -f tag=vX.Y.Z [-f ref=main]
+   ```
+
+   Dispatching a tag that already exists rebuilds and republishes it (useful
+   to recover a failed release); it fails if the GitHub release was already
+   published — delete it first or cut a new patch version.
+
+   **Manual:** tag the merge commit on `main` and push the tag:
 
    ```bash
    git fetch origin && git tag -a vX.Y.Z origin/main -m "vX.Y.Z"
