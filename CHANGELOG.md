@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Pull request reviews**: added `list_pull_request_reviews` (reviewer,
+  verdict, summary body and inline comments, plus `latest_state_by_reviewer`)
+  and `review_pull_request` (submit `approve`, `request_changes`, or
+  `comment` reviews authored by the authenticated caller), both honoring
+  `GH_PROJECT_SCOPE_LOCK` and requiring `pull_requests.read` /
+  `pull_requests.write`.
+
+- **Organization-wide repository targeting**: repository-scoped tools now
+  accept optional `owner`/`repo` overrides resolved through the new
+  `core.access.resolve_repository` helper. With `GH_PROJECT_SCOPE_LOCK=false`
+  a single server can operate on any repository the caller's token can reach;
+  with the lock on, foreign targets are still refused before any GitHub call.
+  Covered tools include PR listing/detail, PR↔issue lifecycle, issue
+  create/edit/close/comment/sub-issue operations, labels, milestones,
+  repository contents (files, code search, branches, governed commits),
+  quality/diagnostic reports, bulk issue operations, release notes, pull
+  request create/update/link/bulk-assign, and the permanent-delete tools.
+  Project-board tools remain bound to the configured Projects V2 board.
+  See `docs/MULTI_SCOPE_CONFIGURATION.md` for the new organization-wide mode.
+
 ### Fixed
 
 - **Project item lookup on multi-repository boards**: `update_project_item_fields` (and every tool that resolves an issue/PR number to a board item) matched only the number, so on a Project V2 board shared by several repositories it could update `#81` of another repository instead of the configured one. `resolve_item_id` now matches the configured repository (by the item URL) and, when no repository is configured, refuses numbers that are ambiguous across repositories.

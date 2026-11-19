@@ -12,6 +12,7 @@ import logging
 from pydantic import BaseModel, Field
 
 from clients.gh_cli_client import CLIError
+from core.access import resolve_repository
 from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
 from services.issue_service import (
@@ -30,6 +31,14 @@ class CloseIssueInput(BaseModel):
     """
 
     issue_number: int = Field(description="GitHub issue number to close")
+    owner: str | None = Field(
+        default=None,
+        description="Repository owner. Defaults to GH_PROJECT_ORG_NAME (scope-lock checked).",
+    )
+    repo: str | None = Field(
+        default=None,
+        description="Repository name. Defaults to GH_PROJECT_REPO_NAME (scope-lock checked).",
+    )
 
 
 async def close_issue(params: CloseIssueInput) -> dict:
@@ -49,8 +58,11 @@ async def close_issue(params: CloseIssueInput) -> dict:
     """
     try:
         await get_service_factory().ensure_auth()
+        repository = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
-        issue_service = get_service_factory().issue_service(gh_client)
+        issue_service = get_service_factory().issue_service(
+            gh_client, repository=repository
+        )
 
         try:
             await issue_service.close(issue_number=params.issue_number)

@@ -32,7 +32,7 @@ import logging
 from pydantic import BaseModel, Field
 
 from clients.gh_cli_client import CLIError
-from core.config import get_settings
+from core.access import resolve_repository
 from core.error_handling import build_error_response, handle_tool_error
 from graphql.mutations import DELETE_ISSUE_MUTATION, DELETE_PROJECT_ITEM_MUTATION
 from models.responses import ToolSuccess
@@ -120,7 +120,18 @@ async def delete_project_item(params: DeleteProjectItemInput) -> dict:
 # ── delete_issue ─────────────────────────────────────────────────────────────
 
 
-class DeleteIssueInput(BaseModel):
+class _RepoTarget(BaseModel):
+    owner: str | None = Field(
+        default=None,
+        description="Repository owner. Defaults to GH_PROJECT_ORG_NAME (scope-lock checked).",
+    )
+    repo: str | None = Field(
+        default=None,
+        description="Repository name. Defaults to GH_PROJECT_REPO_NAME (scope-lock checked).",
+    )
+
+
+class DeleteIssueInput(_RepoTarget):
     """Input schema for the delete_issue tool."""
 
     issue_number: int = Field(
@@ -143,8 +154,7 @@ async def delete_issue(params: DeleteIssueInput) -> dict:
             )
 
         await get_service_factory().ensure_auth()
-        settings = get_settings()
-        repo = f"{settings.org_name}/{settings.repo_name}"
+        repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
 
         # Resolve the issue's node ID (REST exposes node_id directly).
@@ -201,7 +211,7 @@ async def delete_issue(params: DeleteIssueInput) -> dict:
 # ── delete_issue_comment ─────────────────────────────────────────────────────
 
 
-class DeleteIssueCommentInput(BaseModel):
+class DeleteIssueCommentInput(_RepoTarget):
     """Input schema for the delete_issue_comment tool."""
 
     comment_id: int = Field(
@@ -228,8 +238,7 @@ async def delete_issue_comment(params: DeleteIssueCommentInput) -> dict:
             )
 
         await get_service_factory().ensure_auth()
-        settings = get_settings()
-        repo = f"{settings.org_name}/{settings.repo_name}"
+        repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
 
         try:
@@ -265,7 +274,7 @@ async def delete_issue_comment(params: DeleteIssueCommentInput) -> dict:
 # ── delete_label ─────────────────────────────────────────────────────────────
 
 
-class DeleteLabelInput(BaseModel):
+class DeleteLabelInput(_RepoTarget):
     """Input schema for the delete_label tool."""
 
     name: str = Field(
@@ -289,8 +298,7 @@ async def delete_label(params: DeleteLabelInput) -> dict:
             )
 
         await get_service_factory().ensure_auth()
-        settings = get_settings()
-        repo = f"{settings.org_name}/{settings.repo_name}"
+        repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
 
         try:
@@ -322,7 +330,7 @@ async def delete_label(params: DeleteLabelInput) -> dict:
 # ── delete_milestone ─────────────────────────────────────────────────────────
 
 
-class DeleteMilestoneInput(BaseModel):
+class DeleteMilestoneInput(_RepoTarget):
     """Input schema for the delete_milestone tool."""
 
     title: str = Field(
@@ -346,8 +354,7 @@ async def delete_milestone(params: DeleteMilestoneInput) -> dict:
             )
 
         await get_service_factory().ensure_auth()
-        settings = get_settings()
-        repo = f"{settings.org_name}/{settings.repo_name}"
+        repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
 
         # Resolve the milestone number by title (matches close_milestone).

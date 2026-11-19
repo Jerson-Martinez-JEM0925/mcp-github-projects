@@ -253,3 +253,31 @@ def enforce_scope(
             f"{_SCOPE_VARIABLE}=false to target other projects, or omit the "
             "override to use the configured project."
         )
+
+
+def resolve_repository(owner: str | None, repo: str | None) -> str:
+    """Resolve an optional owner/repo override into an ``owner/name`` string.
+
+    Shared helper for tools that accept the ``owner``/``repo`` override pair:
+    the override is fence-checked by :func:`enforce_scope` first, then each
+    side falls back to the configured ``GH_PROJECT_ORG_NAME`` /
+    ``GH_PROJECT_REPO_NAME``. With the scope lock on, any override outside
+    the configured target raises ``ScopeLockError``; with the lock off the
+    result is bounded only by the caller's token permissions.
+
+    Args:
+        owner: Optional owner login override (user or organization).
+        repo: Optional repository name override.
+
+    Returns:
+        The resolved ``owner/repo`` full name.
+
+    Raises:
+        ScopeLockError: when an override names a target outside the
+            configured scope and ``GH_PROJECT_SCOPE_LOCK`` is on.
+    """
+    enforce_scope(owner=owner, repo=repo)
+    from core.config import get_settings
+
+    settings = get_settings()
+    return f"{owner or settings.org_name}/{repo or settings.repo_name}"

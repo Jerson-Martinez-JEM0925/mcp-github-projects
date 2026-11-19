@@ -391,23 +391,22 @@ class TestStableToolSchemas:
         # i.e. the digest already covering the response-quality tools, so this
         # move isolates the dependency bump from any tool addition.
         #
-        # The change is documentation-only. It was verified field by field
-        # across all 140 tools, by dumping both contract sets and diffing them,
-        # before this digest was moved:
-        #   * no tool added, removed or renamed (140 -> 140);
-        #   * output_schema byte-identical for every tool;
-        #   * no parameter added, removed, retyped, or moved between required
-        #     and optional, in any tool;
-        #   * 44 tool descriptions changed because fastmcp 4 no longer appends
-        #     the Google-style "Args:"/"Returns:" docstring sections to the
-        #     tool description, having parsed them instead;
-        #   * 3 input schemas (create_project_item, discover_ids, edit_issue)
-        #     gained per-parameter "description" keys from those same parsed
-        #     docstrings -- purely additive.
-        # Callers therefore see the same contract with better documentation.
+        # Rebaselined again for issues #137/#138 (organization-wide repository
+        # targeting + pull request reviews). The change was verified against
+        # the code diff and the generated catalog:
+        #   * 2 tools added: list_pull_request_reviews, review_pull_request
+        #     (153 -> 155);
+        #   * no tool removed or renamed;
+        #   * additive only: optional `owner`/`repo` parameters were added to
+        #     the repository-scoped tools listed in CHANGELOG.md ("Added ->
+        #     Organization-wide repository targeting"). Every new parameter is
+        #     optional with default null, so existing callers are unaffected;
+        #   * no required parameter added, removed, or retyped, in any tool;
+        #   * review_pull_request.event is a required Literal enum
+        #     (approve/request_changes/comment) on a NEW tool only.
         # Do NOT update this value to silence a failure: re-run the same
         # field-by-field comparison first and record the outcome in CHANGELOG.md.
-        assert digest == "0a07cf52f6be848eb4e89491d2aee9de5d4da3d3873e11c85c80e0eb94e35dbf", (
+        assert digest == "bb4a839b1a304ed6f9f932686ee4c015f4e39445bee87942de9c4a30e64c1db0", (
             f"Stable tool schema digest changed: {digest}. "
             "Update intentionally and document the protocol change."
         )

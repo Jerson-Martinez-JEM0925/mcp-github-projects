@@ -34,6 +34,7 @@ from urllib.parse import quote
 from pydantic import BaseModel, Field, field_validator
 
 from clients.gh_cli_client import CLIError
+from core.access import resolve_repository
 from core.config import get_settings
 from core.error_handling import build_error_response, handle_tool_error
 from core.factory import get_service_factory
@@ -97,11 +98,14 @@ class AttachFileToIssueInput(BaseModel):
         max_length=500,
         description="Optional first line for the comment, e.g. 'Terraform plan output'. Empty uses a neutral default.",
     )
-
-
-def _repo() -> str:
-    settings = get_settings()
-    return f"{settings.org_name}/{settings.repo_name}"
+    owner: str | None = Field(
+        default=None,
+        description="Repository owner. Defaults to GH_PROJECT_ORG_NAME (scope-lock checked).",
+    )
+    repo: str | None = Field(
+        default=None,
+        description="Repository name. Defaults to GH_PROJECT_REPO_NAME (scope-lock checked).",
+    )
 
 
 def _resolve_branch(requested: str) -> tuple[str, str | None]:
@@ -157,7 +161,7 @@ async def attach_file_to_issue(params: AttachFileToIssueInput) -> dict:
     """
     try:
         await get_service_factory().ensure_auth()
-        repo = _repo()
+        repo = resolve_repository(params.owner, params.repo)
         gh = get_service_factory().gh()
 
         branch, refusal = _resolve_branch(params.branch)

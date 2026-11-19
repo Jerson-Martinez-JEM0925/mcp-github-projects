@@ -58,17 +58,18 @@ class IssueService:
         self,
         gh_client: GHCLIRunner,
         context: GitHubContext | None = None,
+        repository: str | None = None,
     ) -> None:
         self._gh = gh_client
         self._context = context or GitHubContext.from_settings(
             token_provider=lambda: ""
         )
+        self._repository = repository
 
     @property
     def _repo_flag(self) -> list[str]:
-        """Return the --repo flag with the configured org/repo."""
-        target = self._context.target
-        repository = target.repository_full_name
+        """Return the --repo flag with the target org/repo."""
+        repository = self._repository or self._context.target.repository_full_name
         if repository is None:
             raise ValueError("Issue operations require a target repository")
         return ["--repo", repository]

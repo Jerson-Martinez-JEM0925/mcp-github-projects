@@ -20,6 +20,7 @@ import logging
 
 from pydantic import BaseModel, Field
 
+from core.access import resolve_repository
 from core.error_handling import build_error_response, handle_tool_error
 from core.config import get_settings
 from core.exceptions import (
@@ -95,6 +96,14 @@ class CreateProjectItemInput(BaseModel):
             "lands with empty custom fields (issue #14). Default True."
         ),
     )
+    owner: str | None = Field(
+        default=None,
+        description="Repository owner. Defaults to GH_PROJECT_ORG_NAME (scope-lock checked).",
+    )
+    repo: str | None = Field(
+        default=None,
+        description="Repository name. Defaults to GH_PROJECT_REPO_NAME (scope-lock checked).",
+    )
 
 
 async def create_project_item(
@@ -110,6 +119,8 @@ async def create_project_item(
     assignees: list[str] | None = None,
     labels: list[str] | None = None,
     apply_defaults: bool = True,
+    owner: str | None = None,
+    repo: str | None = None,
 ) -> dict:
     """Create a new issue and add it to the GitHub Project board.
 
@@ -164,10 +175,11 @@ async def create_project_item(
         logger.error("Authentication error in create_project_item: %s", exc)
         return handle_tool_error(exc, context="Create project item failed")
 
+    repository = resolve_repository(owner, repo)
     gh_client = factory.gh()
     discovery_service = await factory.discovery_service(graphql_client)
     project_service = await factory.project_service(graphql_client, gh_client)
-    issue_service = factory.issue_service(gh_client)
+    issue_service = factory.issue_service(gh_client, repository=repository)
 
     # â”€â”€ Step 3: Discover project metadata â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     try:

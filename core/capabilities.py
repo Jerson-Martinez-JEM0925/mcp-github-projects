@@ -201,6 +201,8 @@ TOOL_CAPABILITIES: dict[str, FrozenSet[Capability]] = {
     "search_repository_code": frozenset({CTR}),
     "list_pull_requests": frozenset({PRR}),
     "get_pull_request_detail": frozenset({PRR}),
+    "list_pull_request_reviews": frozenset({PRR}),
+    "review_pull_request": frozenset({PRW}),
 
     # --- Governed commits (branch + path fenced) ---
     "create_branch": frozenset({CTW}),

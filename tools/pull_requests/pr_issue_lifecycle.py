@@ -17,7 +17,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from clients.gh_cli_client import CLIError
-from core.config import get_settings
+from core.access import resolve_repository
 from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
 from core.factory import get_service_factory
@@ -39,19 +39,30 @@ _CHECKBOX_UNCHECKED = re.compile(r"^\s*-\s*\[\s\]\s*(.+)")
 # ── Input Models ─────────────────────────────────────────────────────────────
 
 
-class VerifyAcceptanceCriteriaInput(BaseModel):
+class _RepoTarget(BaseModel):
+    owner: Optional[str] = Field(
+        default=None,
+        description="Repository owner. Defaults to GH_PROJECT_ORG_NAME (scope-lock checked).",
+    )
+    repo: Optional[str] = Field(
+        default=None,
+        description="Repository name. Defaults to GH_PROJECT_REPO_NAME (scope-lock checked).",
+    )
+
+
+class VerifyAcceptanceCriteriaInput(_RepoTarget):
     """Input schema for the verify_acceptance_criteria tool."""
 
     issue_number: int = Field(description="GitHub issue number to check")
 
 
-class GetPRLinkedIssuesInput(BaseModel):
+class GetPRLinkedIssuesInput(_RepoTarget):
     """Input schema for the get_pr_linked_issues tool."""
 
     pr_number: int = Field(description="GitHub pull request number")
 
 
-class ValidateIssueClosureReadinessInput(BaseModel):
+class ValidateIssueClosureReadinessInput(_RepoTarget):
     """Input schema for the validate_issue_closure_readiness tool."""
 
     issue_number: int = Field(description="GitHub issue number to validate")
@@ -61,7 +72,7 @@ class ValidateIssueClosureReadinessInput(BaseModel):
     )
 
 
-class CloseIssueOnPRMergeInput(BaseModel):
+class CloseIssueOnPRMergeInput(_RepoTarget):
     """Input schema for the close_issue_on_pr_merge tool."""
 
     pr_number: int = Field(description="GitHub pull request number that was merged")
@@ -155,8 +166,7 @@ async def verify_acceptance_criteria(params: VerifyAcceptanceCriteriaInput) -> d
     """
     try:
         await get_service_factory().ensure_auth()
-        settings = get_settings()
-        repo = f"{settings.org_name}/{settings.repo_name}"
+        repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
 
         result = await gh_client.run([
@@ -231,8 +241,7 @@ async def get_pr_linked_issues(params: GetPRLinkedIssuesInput) -> dict:
     """
     try:
         await get_service_factory().ensure_auth()
-        settings = get_settings()
-        repo = f"{settings.org_name}/{settings.repo_name}"
+        repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
 
         # Fetch PR details.
@@ -306,8 +315,7 @@ async def validate_issue_closure_readiness(params: ValidateIssueClosureReadiness
     """
     try:
         await get_service_factory().ensure_auth()
-        settings = get_settings()
-        repo = f"{settings.org_name}/{settings.repo_name}"
+        repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
 
         # Fetch issue details.
@@ -432,8 +440,7 @@ async def close_issue_on_pr_merge(params: CloseIssueOnPRMergeInput) -> dict:
     """
     try:
         await get_service_factory().ensure_auth()
-        settings = get_settings()
-        repo = f"{settings.org_name}/{settings.repo_name}"
+        repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
 
         # Step 1: Fetch PR and verify it's merged.

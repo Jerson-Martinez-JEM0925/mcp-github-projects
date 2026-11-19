@@ -105,7 +105,7 @@ async def test_create_project_item_returns_success_with_warnings() -> None:
     factory.gh = lambda: object()
     factory.discovery_service = AsyncMock(return_value=discovery)
     factory.project_service = AsyncMock(return_value=project_service)
-    factory.issue_service = lambda _gh: issue_service
+    factory.issue_service = lambda _gh, repository=None: issue_service
 
     with patch.object(module, "get_service_factory", return_value=factory), \
             patch.object(module, "compute_defaults", return_value={}):
