@@ -30,6 +30,8 @@ from tools.repository_content import (
     get_repository_file,
     list_repository_directory,
     search_repository_code,
+    _apply_hunks,
+    _parse_unified_patch,
 )
 
 REPO = "repos/octo-org/octo-repo"
@@ -307,6 +309,108 @@ async def test_commit_sends_base64_changes_on_the_branch_head() -> None:
     added = payload["fileChanges"]["additions"][0]
     assert base64.b64decode(added["contents"]).decode() == "# ADR-0006 ñ"
     assert payload["fileChanges"]["deletions"] == [{"path": "docs/old.md"}]
+
+
+@pytest.mark.anyio
+async def test_commit_applies_guarded_unified_patch_on_expected_head() -> None:
+    branch = "chatbot/patch"
+    sha = "b" * 40
+    patch = (
+        "diff --git a/docs/a.md b/docs/a.md\n"
+        "--- a/docs/a.md\n+++ b/docs/a.md\n"
+        "@@ -1,2 +1,2 @@\n line one\n-line two\n+updated\n"
+        "diff --git a/docs/new.md b/docs/new.md\nnew file mode 100644\n"
+        "--- /dev/null\n+++ b/docs/new.md\n@@ -0,0 +1 @@\n+new text\n"
+        "diff --git a/docs/old.md b/docs/old.md\ndeleted file mode 100644\n"
+        "--- a/docs/old.md\n+++ /dev/null\n@@ -1 +0,0 @@\n-removed\n"
+    )
+    gh = FakeGH({
+        **REPO_META,
+        f"{REPO}/git/ref/heads/{branch}": {"object": {"sha": sha}},
+        f"{REPO}/contents/docs/a.md": "line one\nline two\n",
+        f"{REPO}/contents/docs/old.md": "removed\n",
+    })
+    gql = FakeGraphQL()
+    with use_service_factory(gh_client=gh, graphql_client=gql):
+        result = await commit_files(CommitFilesInput(
+            branch=branch,
+            message="feat(contents): apply patch",
+            patch=patch,
+            expected_head_sha=sha,
+        ))
+    assert result["ok"] is True
+    additions = gql.calls[0][1]["input"]["fileChanges"]["additions"]
+    contents = {row["path"]: base64.b64decode(row["contents"]).decode() for row in additions}
+    assert contents == {"docs/a.md": "line one\nupdated\n", "docs/new.md": "new text\n"}
+    assert gql.calls[0][1]["input"]["fileChanges"]["deletions"] == [{"path": "docs/old.md"}]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("patch", ["GIT binary patch\n", "diff --git a/docs/a.md b/docs/a.md\nrename from docs/a.md\n"])
+async def test_commit_patch_rejects_unsupported_patch_forms(patch: str) -> None:
+    gql = FakeGraphQL()
+    with use_service_factory(gh_client=FakeGH(REPO_META), graphql_client=gql):
+        result = await commit_files(CommitFilesInput(
+            branch="chatbot/patch",
+            message="fix(contents): invalid patch",
+            patch=patch,
+            expected_head_sha="b" * 40,
+        ))
+    assert result["ok"] is False
+    assert gql.calls == []
+
+
+@pytest.mark.anyio
+async def test_commit_patch_rejects_stale_head_before_fetching_files() -> None:
+    branch = "chatbot/patch"
+    patch = "diff --git a/docs/a.md b/docs/a.md\n--- a/docs/a.md\n+++ b/docs/a.md\n@@ -1 +1 @@\n-old\n+new\n"
+    gh = FakeGH({**REPO_META, f"{REPO}/git/ref/heads/{branch}": {"object": {"sha": "c" * 40}}})
+    gql = FakeGraphQL()
+    with use_service_factory(gh_client=gh, graphql_client=gql):
+        result = await commit_files(CommitFilesInput(
+            branch=branch,
+            message="fix(contents): stale patch",
+            patch=patch,
+            expected_head_sha="b" * 40,
+        ))
+    assert result["ok"] is False and "differs from expected_head_sha" in result["message"]
+    assert gql.calls == []
+
+
+@pytest.mark.anyio
+async def test_commit_patch_refuses_forbidden_paths_before_fetching() -> None:
+    branch = "chatbot/patch"
+    sha = "b" * 40
+    patch = (
+        "diff --git a/.github/workflows/x.yml b/.github/workflows/x.yml\n"
+        "--- a/.github/workflows/x.yml\n+++ b/.github/workflows/x.yml\n"
+        "@@ -1 +1 @@\n-old\n+new\n"
+    )
+    gh = FakeGH({**REPO_META, f"{REPO}/git/ref/heads/{branch}": {"object": {"sha": sha}}})
+    gql = FakeGraphQL()
+    with use_service_factory(gh_client=gh, graphql_client=gql):
+        result = await commit_files(CommitFilesInput(
+            branch=branch,
+            message="fix(workflow): refuse",
+            patch=patch,
+            expected_head_sha=sha,
+        ))
+    assert result["ok"] is False
+    assert gql.calls == []
+    assert not any("contents" in " ".join(call) for call in gh.calls)
+
+
+def test_patch_hunk_can_change_lines_that_look_like_file_headers() -> None:
+    patch = (
+        "diff --git a/docs/a.md b/docs/a.md\n"
+        "--- a/docs/a.md\n+++ b/docs/a.md\n"
+        "@@ -1,2 +1,2 @@\n"
+        "---- old marker\n-+++ old marker\n"
+        "+--- new marker\n++++ new marker\n"
+    )
+    parsed = _parse_unified_patch(patch)
+    result = _apply_hunks("--- old marker\n+++ old marker\n", parsed[0]["hunks"])
+    assert result == "--- new marker\n+++ new marker\n"
 
 
 # ── Registration: write allowlist and instructions ──────────────────────────

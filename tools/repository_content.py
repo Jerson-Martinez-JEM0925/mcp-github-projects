@@ -20,6 +20,8 @@ Write tools (``contents.write``), fenced by configuration:
 * ``commit_files`` — one commit on such a branch through the GraphQL
   ``createCommitOnBranch`` mutation, so the commit is attributed to the token
   owner (the end user with per-request credentials) and verified by GitHub.
+  It accepts either full file contents or a bounded unified diff tied to an
+  expected branch-head SHA.
   Paths under ``.github/`` are refused unless an exact workflow file is named
   by ``GH_PROJECT_ALLOWED_GITHUB_WORKFLOW_PATHS``. When
   ``GH_PROJECT_WRITE_PATH_PREFIXES`` is set, every path must also start with
@@ -45,8 +47,9 @@ from models.responses import ToolSuccess
 
 MAX_TREE_ENTRIES = 1_000
 MAX_FILE_CHARS = 60_000
-MAX_COMMIT_FILES = 20
+MAX_COMMIT_FILES = 50
 MAX_COMMIT_BYTES = 1_000_000
+MAX_PATCH_BYTES = 1_000_000
 _FORBIDDEN_PREFIXES = (".github/",)
 _BRANCH_RE = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
 
@@ -90,6 +93,99 @@ def _invalid(message: str, suggestion: str) -> dict:
     return build_error_response(
         error_type="validation", message=message, suggestion=suggestion
     )
+
+
+def _parse_unified_patch(patch: str) -> list[dict[str, Any]]:
+    """Parse the supported, text-only subset of unified git diffs."""
+    files: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+    hunk: dict[str, Any] | None = None
+    header = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+    for line in patch.replace("\r\n", "\n").splitlines(keepends=True):
+        if line.startswith(("GIT binary patch", "Binary files ", "rename from ", "rename to ")):
+            raise ValueError("binary patches and renames are unsupported")
+        if line.startswith("diff --git "):
+            match = re.fullmatch(r"diff --git a/(\S+) b/(\S+)\n?", line)
+            if not match:
+                raise ValueError("quoted or malformed diff paths are unsupported")
+            current = {"old": match.group(1), "new": match.group(2), "hunks": []}
+            files.append(current)
+            hunk = None
+        elif line.startswith("@@ ") and current is not None:
+            match = header.match(line)
+            if not match:
+                raise ValueError("malformed unified-diff hunk header")
+            old_start, old_count, new_start, new_count = match.groups()
+            hunk = {
+                "old_start": int(old_start),
+                "old_count": int(old_count or 1),
+                "new_count": int(new_count or 1),
+                "ops": [],
+            }
+            current["hunks"].append(hunk)
+        elif hunk is not None:
+            if line.startswith("\\ No newline at end of file"):
+                raise ValueError("no-newline markers are unsupported")
+            if line[:1] in (" ", "+", "-"):
+                hunk["ops"].append((line[0], line[1:]))
+            elif line.strip():
+                raise ValueError("unexpected data inside unified-diff hunk")
+        elif line.startswith("--- ") and current is not None:
+            current["old"] = line[4:].split("\t", 1)[0].strip()
+        elif line.startswith("+++ ") and current is not None:
+            current["new"] = line[4:].split("\t", 1)[0].strip()
+
+    if not files:
+        raise ValueError("patch contains no file changes")
+    for item in files:
+        old, new = item["old"], item["new"]
+        if old != "/dev/null" and not old.startswith("a/"):
+            raise ValueError("patch source path must use the a/ prefix")
+        if new != "/dev/null" and not new.startswith("b/"):
+            raise ValueError("patch destination path must use the b/ prefix")
+        old_path = old[2:] if old.startswith("a/") else None
+        new_path = new[2:] if new.startswith("b/") else None
+        if old_path and new_path and old_path != new_path:
+            raise ValueError("renames are unsupported")
+        if not item["hunks"] or (old_path is None and new_path is None):
+            raise ValueError("each patch file must contain hunks and a path")
+        item["old_path"] = old_path
+        item["new_path"] = new_path
+        for part in item["hunks"]:
+            old_count = sum(op != "+" for op, _ in part["ops"])
+            new_count = sum(op != "-" for op, _ in part["ops"])
+            if old_count != part["old_count"] or new_count != part["new_count"]:
+                raise ValueError("hunk line counts do not match the header")
+    if len(files) > MAX_COMMIT_FILES:
+        raise ValueError(f"patch changes more than {MAX_COMMIT_FILES} files")
+    paths = [item["new_path"] or item["old_path"] for item in files]
+    if len(set(paths)) != len(paths):
+        raise ValueError("patch contains a duplicate file path")
+    return files
+
+
+def _apply_hunks(source: str, hunks: list[dict[str, Any]]) -> str:
+    """Apply hunks only when every context/removal line matches exactly."""
+    source_lines = source.replace("\r\n", "\n").splitlines(keepends=True)
+    result: list[str] = []
+    cursor = 0
+    for hunk in hunks:
+        start = max(hunk["old_start"] - 1, 0)
+        if start < cursor or start > len(source_lines):
+            raise ValueError("hunk ranges overlap or exceed the source file")
+        result.extend(source_lines[cursor:start])
+        cursor = start
+        for operation, text in hunk["ops"]:
+            if operation in (" ", "-"):
+                if cursor >= len(source_lines) or source_lines[cursor] != text:
+                    raise ValueError("patch context does not match the branch file")
+                if operation == " ":
+                    result.append(text)
+                cursor += 1
+            else:
+                result.append(text)
+    result.extend(source_lines[cursor:])
+    return "".join(result)
 
 
 # ── Read: directory listing ──────────────────────────────────────────────────
@@ -453,6 +549,7 @@ class CommitFilesInput(BaseModel):
     files: list[FileChange] = Field(default_factory=list, max_length=MAX_COMMIT_FILES, description="Files to add or overwrite (full content).")
     deletions: list[str] = Field(default_factory=list, max_length=MAX_COMMIT_FILES, description="Paths to delete.")
     expected_head_sha: str = Field(default="", max_length=40, description="Optional branch head SHA the commit must build on (optimistic concurrency).")
+    patch: str = Field(default="", max_length=MAX_PATCH_BYTES, description="Optional bounded unified diff. Requires expected_head_sha; cannot be combined with files or deletions.")
 
 
 _CREATE_COMMIT = """
@@ -467,31 +564,79 @@ mutation($input: CreateCommitOnBranchInput!) {
 async def commit_files(params: CommitFilesInput) -> dict:
     """Commit file additions/updates/deletions to an allowed branch as the authenticated user (createCommitOnBranch).
 
-    Refuses the default branch, unlisted .github paths, and paths outside
-    GH_PROJECT_WRITE_PATH_PREFIXES. Always follow with create_pull_request so
-    the change is reviewed; nothing reaches the default branch directly.
+    Accepts full file contents or a bounded unified diff tied to an expected
+    branch-head SHA. Refuses the default branch, unlisted .github paths, and
+    paths outside GH_PROJECT_WRITE_PATH_PREFIXES. Patch commits apply only
+    when every hunk matches the branch content. Always follow with
+    create_pull_request; nothing reaches the default branch directly.
     """
     try:
         await get_service_factory().ensure_auth()
         repo = _repo()
         branch = params.branch.strip()
-        if not params.files and not params.deletions:
+        files = list(params.files)
+        deletions = list(params.deletions)
+        if params.patch:
+            if files or deletions:
+                return _invalid("patch cannot be combined with files or deletions", "Pass either patch or full file contents.")
+            expected = params.expected_head_sha.strip()
+            if not re.fullmatch(r"[0-9a-f]{40}", expected):
+                return _invalid("patch requires a 40-character expected_head_sha", "Read the branch head and include it to prevent stale patches.")
+            if len(params.patch.encode("utf-8")) > MAX_PATCH_BYTES:
+                return _invalid("patch exceeds the byte limit", "Split the change into smaller reviewed commits.")
+            try:
+                patch_files = _parse_unified_patch(params.patch)
+            except ValueError as exc:
+                return _invalid(str(exc), "Pass a text unified diff without renames or binary changes.")
+        else:
+            patch_files = []
+        if not files and not deletions and not patch_files:
             return _invalid("nothing to commit", "Pass at least one file or deletion.")
         default_branch = await _default_branch()
         reason = _check_branch(branch, default_branch)
         if reason:
             return _invalid(reason, "Create an allowed branch with create_branch first.")
+        if patch_files:
+            repo_head = await _api(f"repos/{repo}/git/ref/heads/{quote(branch, safe='/')}")
+            actual_head = ((repo_head or {}).get("object") or {}).get("sha")
+            if actual_head != params.expected_head_sha:
+                return _invalid("branch head differs from expected_head_sha", "Refresh the branch diff and retry against its current SHA.")
+            for item in patch_files:
+                old_path = item["old_path"]
+                new_path = item["new_path"]
+                for path in (old_path, new_path):
+                    if path:
+                        clean = _clean_path(path, allow_empty=False)
+                        refusal = _check_write_path(clean)
+                        if refusal:
+                            return _invalid(refusal, "Only change files inside the allowed folders.")
+                original = ""
+                if old_path:
+                    result = await get_service_factory().gh().run(
+                        [
+                            "api",
+                            "-H",
+                            "Accept: application/vnd.github.raw+json",
+                            f"repos/{repo}/contents/{quote(old_path, safe='/')}?ref={quote(branch, safe='')}",
+                        ]
+                    )
+                    original = result.stdout
+                updated = _apply_hunks(original, item["hunks"])
+                if new_path is None:
+                    deletions.append(old_path)
+                else:
+                    files.append(FileChange(path=new_path, content=updated))
         additions = []
         total = 0
         seen: set[str] = set()
         try:
-            for change in params.files:
+            for change in files:
                 path = _clean_path(change.path, allow_empty=False)
                 encoded = change.content.encode("utf-8")
                 total += len(encoded)
                 additions.append({"path": path, "contents": base64.b64encode(encoded).decode("ascii")})
                 seen.add(path)
-            deletions = [_clean_path(p, allow_empty=False) for p in params.deletions]
+            deletions = [_clean_path(p, allow_empty=False) for p in deletions]
         except ValueError as exc:
             return _invalid(str(exc), "Use repository-relative paths such as 'docs/adr/ADR-0006.md'.")
         if seen & set(deletions):
