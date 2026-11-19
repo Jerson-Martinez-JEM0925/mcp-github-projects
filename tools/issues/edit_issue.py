@@ -13,7 +13,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from clients.gh_cli_client import CLIError
-from core.config import get_settings
+from core.access import resolve_repository
 from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
 from core.factory import get_service_factory
@@ -32,6 +32,14 @@ class EditIssueInput(BaseModel):
     remove_labels: Optional[list[str]] = Field(default=None, description="Labels to remove")
     add_assignees: Optional[list[str]] = Field(default=None, description="GitHub usernames to assign")
     remove_assignees: Optional[list[str]] = Field(default=None, description="GitHub usernames to unassign")
+    owner: Optional[str] = Field(
+        default=None,
+        description="Repository owner. Defaults to GH_PROJECT_ORG_NAME (scope-lock checked).",
+    )
+    repo: Optional[str] = Field(
+        default=None,
+        description="Repository name. Defaults to GH_PROJECT_REPO_NAME (scope-lock checked).",
+    )
 
 
 async def edit_issue(
@@ -43,6 +51,8 @@ async def edit_issue(
     remove_labels: list[str] | None = None,
     add_assignees: list[str] | None = None,
     remove_assignees: list[str] | None = None,
+    owner: str | None = None,
+    repo: str | None = None,
 ) -> dict:
     """Edit a GitHub issue's properties.
 
@@ -65,8 +75,7 @@ async def edit_issue(
     """
     try:
         await get_service_factory().ensure_auth()
-        settings = get_settings()
-        repo = f"{settings.org_name}/{settings.repo_name}"
+        repo = resolve_repository(owner, repo)
         gh_client = get_service_factory().gh()
 
         args: list[str] = ["issue", "edit", str(issue_number), "--repo", repo]

@@ -3,6 +3,7 @@
 import pytest
 
 import tools.issues.advanced_operations as ops
+from core.config import get_settings
 from tools.issues.advanced_operations import ListSubIssuesInput, list_sub_issues
 
 
@@ -35,11 +36,6 @@ class _Factory:
         return self._gh
 
 
-class _Settings:
-    org_name = "octo-org"
-    repo_name = "octo-repo"
-
-
 def _page(numbers, has_next, cursor=None, total=None):
     return {
         "data": {
@@ -59,11 +55,16 @@ def _page(numbers, has_next, cursor=None, total=None):
 
 @pytest.fixture
 def patch(monkeypatch):
+    monkeypatch.setenv("GH_PROJECT_ORG_NAME", "octo-org")
+    monkeypatch.setenv("GH_PROJECT_REPO_NAME", "octo-repo")
+    monkeypatch.setenv("GH_PROJECT_PROJECT_NUMBER", "7")
+    get_settings.cache_clear()
+
     def _apply(gh):
         monkeypatch.setattr(ops, "get_service_factory", lambda: _Factory(gh))
-        monkeypatch.setattr(ops, "get_settings", lambda: _Settings())
         return gh
-    return _apply
+    yield _apply
+    get_settings.cache_clear()
 
 
 @pytest.mark.asyncio

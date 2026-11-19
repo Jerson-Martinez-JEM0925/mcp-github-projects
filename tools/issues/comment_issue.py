@@ -10,7 +10,7 @@ import logging
 from pydantic import BaseModel, Field
 
 from clients.gh_cli_client import CLIError
-from core.config import get_settings
+from core.access import resolve_repository
 from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
 from core.factory import get_service_factory
@@ -23,6 +23,14 @@ class CommentIssueInput(BaseModel):
 
     issue_number: int = Field(description="GitHub issue number to comment on")
     body: str = Field(description="Comment body text (supports Markdown)", min_length=1, max_length=65536)
+    owner: str | None = Field(
+        default=None,
+        description="Repository owner. Defaults to GH_PROJECT_ORG_NAME (scope-lock checked).",
+    )
+    repo: str | None = Field(
+        default=None,
+        description="Repository name. Defaults to GH_PROJECT_REPO_NAME (scope-lock checked).",
+    )
 
 
 async def comment_issue(params: CommentIssueInput) -> dict:
@@ -36,8 +44,7 @@ async def comment_issue(params: CommentIssueInput) -> dict:
     """
     try:
         await get_service_factory().ensure_auth()
-        settings = get_settings()
-        repo = f"{settings.org_name}/{settings.repo_name}"
+        repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
 
         result = await gh_client.run([

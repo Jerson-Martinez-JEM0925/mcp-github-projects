@@ -131,11 +131,19 @@ class ServiceFactory:
 
         return FieldService(graphql_client=graphql or await self.graphql())
 
-    def issue_service(self, gh: GHCLIRunner | None = None) -> IssueService:
-        """Return an ``IssueService`` sharing ``gh`` when given."""
+    def issue_service(
+        self,
+        gh: GHCLIRunner | None = None,
+        repository: str | None = None,
+    ) -> IssueService:
+        """Return an ``IssueService`` sharing ``gh`` when given.
+
+        ``repository`` pins the service to an ``owner/name`` target other than
+        the configured one; callers must run ``enforce_scope`` first.
+        """
         from services.issue_service import IssueService
 
-        return IssueService(gh_client=gh or self.gh())
+        return IssueService(gh_client=gh or self.gh(), repository=repository)
 
 
 _default = ServiceFactory()

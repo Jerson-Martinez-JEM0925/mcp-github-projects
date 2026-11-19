@@ -12,7 +12,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from clients.gh_cli_client import CLIError
-from core.access import enforce_scope
+from core.access import enforce_scope, resolve_repository
 from core.config import get_settings
 from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
@@ -21,7 +21,18 @@ from core.factory import get_service_factory
 logger = logging.getLogger(__name__)
 
 
-class CreateMilestoneInput(BaseModel):
+class _RepoTarget(BaseModel):
+    owner: Optional[str] = Field(
+        default=None,
+        description="Repository owner. Defaults to GH_PROJECT_ORG_NAME (scope-lock checked).",
+    )
+    repo: Optional[str] = Field(
+        default=None,
+        description="Repository name. Defaults to GH_PROJECT_REPO_NAME (scope-lock checked).",
+    )
+
+
+class CreateMilestoneInput(_RepoTarget):
     """Input schema for the create_milestone tool."""
 
     title: str = Field(description="Milestone title (e.g., 'Sprint 1 - Jul 7-13')")
@@ -29,13 +40,13 @@ class CreateMilestoneInput(BaseModel):
     due_date: Optional[str] = Field(default=None, description="Due date in ISO 8601 format (YYYY-MM-DD)")
 
 
-class CloseMilestoneInput(BaseModel):
+class CloseMilestoneInput(_RepoTarget):
     """Input schema for the close_milestone tool."""
 
     title: str = Field(description="Milestone title to close (exact match)")
 
 
-class ListMilestonesInput(BaseModel):
+class ListMilestonesInput(_RepoTarget):
     """Input schema for the list_milestones tool."""
 
     state: str = Field(default="open", description="Filter by state: 'open', 'closed', or 'all'")
@@ -173,8 +184,7 @@ async def create_milestone(params: CreateMilestoneInput) -> dict:
     """
     try:
         await get_service_factory().ensure_auth()
-        settings = get_settings()
-        repo = f"{settings.org_name}/{settings.repo_name}"
+        repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
 
         api_args = ["api", f"repos/{repo}/milestones", "--method", "POST",
@@ -227,8 +237,7 @@ async def close_milestone(params: CloseMilestoneInput) -> dict:
     """
     try:
         await get_service_factory().ensure_auth()
-        settings = get_settings()
-        repo = f"{settings.org_name}/{settings.repo_name}"
+        repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
 
         list_result = await gh_client.run([
@@ -286,8 +295,7 @@ async def list_milestones(params: ListMilestonesInput) -> dict:
     """
     try:
         await get_service_factory().ensure_auth()
-        settings = get_settings()
-        repo = f"{settings.org_name}/{settings.repo_name}"
+        repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
 
         result = await gh_client.run([

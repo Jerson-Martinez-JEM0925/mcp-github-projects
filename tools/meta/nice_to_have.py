@@ -16,6 +16,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from clients.gh_cli_client import CLIError
+from core.access import resolve_repository
 from core.config import get_settings
 from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
@@ -42,10 +43,27 @@ class LinkPullRequestInput(BaseModel):
 
     issue_number: int = Field(description="Issue number to link the PR to")
     pr_number: int = Field(description="Pull request number to link")
+    owner: str | None = Field(
+        default=None,
+        description="Repository owner. Defaults to GH_PROJECT_ORG_NAME (scope-lock checked).",
+    )
+    repo: str | None = Field(
+        default=None,
+        description="Repository name. Defaults to GH_PROJECT_REPO_NAME (scope-lock checked).",
+    )
 
 
 class PullRequestMetadataInput(BaseModel):
     """Metadata shared by pull-request creation and update."""
+
+    owner: str | None = Field(
+        default=None,
+        description="Repository owner. Defaults to GH_PROJECT_ORG_NAME (scope-lock checked).",
+    )
+    repo: str | None = Field(
+        default=None,
+        description="Repository name. Defaults to GH_PROJECT_REPO_NAME (scope-lock checked).",
+    )
 
     reviewers: list[str] | None = Field(
         default=None,
@@ -190,6 +208,14 @@ class BulkAssignInput(BaseModel):
     issue_numbers: list[int] = Field(description="List of issue numbers to assign")
     assignees: Optional[list[str]] = Field(default=None, description="GitHub usernames to assign")
     milestone: Optional[str] = Field(default=None, description="Milestone title to set on all issues")
+    owner: Optional[str] = Field(
+        default=None,
+        description="Repository owner. Defaults to GH_PROJECT_ORG_NAME (scope-lock checked).",
+    )
+    repo: Optional[str] = Field(
+        default=None,
+        description="Repository name. Defaults to GH_PROJECT_REPO_NAME (scope-lock checked).",
+    )
 
 
 def _validate_pull_request_response(payload: object, *, operation: str) -> dict:
@@ -366,8 +392,7 @@ async def link_pull_request(params: LinkPullRequestInput) -> dict:
     """
     try:
         await get_service_factory().ensure_auth()
-        settings = get_settings()
-        repo = f"{settings.org_name}/{settings.repo_name}"
+        repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
 
         pr_result = await gh_client.run([
@@ -655,7 +680,7 @@ async def create_pull_request(params: CreatePullRequestInput) -> dict:
     try:
         await get_service_factory().ensure_auth()
         settings = get_settings()
-        repo = f"{settings.org_name}/{settings.repo_name}"
+        repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
 
         api_args = [
@@ -815,8 +840,7 @@ async def update_pull_request(params: UpdatePullRequestInput) -> dict:
             )
 
         await get_service_factory().ensure_auth()
-        settings = get_settings()
-        repo = f"{settings.org_name}/{settings.repo_name}"
+        repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
 
         api_args = [
@@ -919,8 +943,7 @@ async def bulk_assign(params: BulkAssignInput) -> dict:
     """
     try:
         await get_service_factory().ensure_auth()
-        settings = get_settings()
-        repo = f"{settings.org_name}/{settings.repo_name}"
+        repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
 
         if not params.assignees and not params.milestone:

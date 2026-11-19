@@ -39,6 +39,7 @@ from urllib.parse import quote
 
 from pydantic import BaseModel, Field, field_validator
 
+from core.access import resolve_repository
 from core.config import get_settings
 from core.error_handling import build_error_response, handle_tool_error
 from core.factory import get_service_factory
@@ -57,9 +58,15 @@ _BRANCH_RE = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-def _repo() -> str:
-    settings = get_settings()
-    return f"{settings.org_name}/{settings.repo_name}"
+class _RepoTarget(BaseModel):
+    owner: str | None = Field(
+        default=None,
+        description="Repository owner. Defaults to GH_PROJECT_ORG_NAME (scope-lock checked).",
+    )
+    repo: str | None = Field(
+        default=None,
+        description="Repository name. Defaults to GH_PROJECT_REPO_NAME (scope-lock checked).",
+    )
 
 
 def _clean_path(value: str, *, allow_empty: bool) -> str:
@@ -81,8 +88,8 @@ async def _api(path: str, *extra: str) -> Any:
     return json.loads(result.stdout) if result.stdout.strip() else {}
 
 
-async def _default_branch() -> str:
-    data = await _api(f"repos/{_repo()}")
+async def _default_branch(repo: str) -> str:
+    data = await _api(f"repos/{repo}")
     branch = data.get("default_branch") if isinstance(data, dict) else None
     if not branch:
         raise ValueError("could not resolve the repository default branch")
@@ -191,7 +198,7 @@ def _apply_hunks(source: str, hunks: list[dict[str, Any]]) -> str:
 # ── Read: directory listing ──────────────────────────────────────────────────
 
 
-class ListDirectoryInput(BaseModel):
+class ListDirectoryInput(_RepoTarget):
     path: str = Field(default="", max_length=1_000, description="Folder inside the repository; empty = repository root.")
     ref: str = Field(default="", max_length=200, description="Branch, tag or commit SHA; empty = default branch.")
     recursive: bool = Field(default=False, description="List every file below `path` (whole subtree) instead of one level.")
@@ -220,8 +227,8 @@ async def list_repository_directory(params: ListDirectoryInput) -> dict:
     try:
         path = _clean_path(params.path, allow_empty=True)
         await get_service_factory().ensure_auth()
-        ref = params.ref.strip() or await _default_branch()
-        repo = _repo()
+        repo = resolve_repository(params.owner, params.repo)
+        ref = params.ref.strip() or await _default_branch(repo)
         entries: list[dict[str, Any]] = []
         upstream_truncated = False
         if params.recursive:
@@ -269,7 +276,7 @@ async def list_repository_directory(params: ListDirectoryInput) -> dict:
 # ── Read: one file ───────────────────────────────────────────────────────────
 
 
-class GetFileInput(BaseModel):
+class GetFileInput(_RepoTarget):
     path: str = Field(min_length=1, max_length=1_000, description="File path inside the repository, e.g. 'docs/architecture/adr-process.md'.")
     ref: str = Field(default="", max_length=200, description="Branch, tag or commit SHA; empty = default branch.")
     offset: int = Field(default=0, ge=0, description="Character offset to start from (use `next_offset` to continue).")
@@ -297,8 +304,8 @@ async def list_repository_directory(params: ListDirectoryInput) -> dict:
     try:
         path = _clean_path(params.path, allow_empty=True)
         await get_service_factory().ensure_auth()
-        ref = params.ref.strip() or await _default_branch()
-        repo = _repo()
+        repo = resolve_repository(params.owner, params.repo)
+        ref = params.ref.strip() or await _default_branch(repo)
         entries: list[dict[str, Any]] = []
         upstream_truncated = False
         if params.recursive:
@@ -353,8 +360,8 @@ async def get_repository_file(params: GetFileInput) -> dict:
     try:
         path = _clean_path(params.path, allow_empty=False)
         await get_service_factory().ensure_auth()
-        ref = params.ref.strip() or await _default_branch()
-        repo = _repo()
+        repo = resolve_repository(params.owner, params.repo)
+        ref = params.ref.strip() or await _default_branch(repo)
         result = await get_service_factory().gh().run(
             [
                 "api",
@@ -387,7 +394,10 @@ async def get_repository_file(params: GetFileInput) -> dict:
         return handle_tool_error(exc, context="Get repository file failed")
 
 
-class SearchCodeInput(BaseModel):
+# ── Read: code search ────────────────────────────────────────────────────────
+
+
+class SearchCodeInput(_RepoTarget):
     query: str = Field(min_length=1, max_length=256, description="Words to find in file contents, e.g. 'nomenclatura servidor'.")
     path_prefix: str = Field(default="", max_length=500, description="Optional folder to restrict the search, e.g. 'docs/devops'.")
     extension: str = Field(default="", max_length=20, description="Optional file extension without dot, e.g. 'md'.")
@@ -397,7 +407,7 @@ class SearchCodeInput(BaseModel):
     @classmethod
     def _no_scope_qualifiers(cls, value: str) -> str:
         if re.search(r"(^|\s)-?(repo|org|user):", value, flags=re.IGNORECASE):
-            raise ValueError("query must not contain repo:/org:/user: qualifiers; the repository is fixed")
+            raise ValueError("query must not contain repo:/org:/user: qualifiers; use the owner/repo fields to target another repository")
         return value.strip()
 
 
@@ -411,7 +421,7 @@ async def search_repository_code(params: SearchCodeInput) -> dict:
     """
     try:
         await get_service_factory().ensure_auth()
-        repo = _repo()
+        repo = resolve_repository(params.owner, params.repo)
         terms = [params.query, f"repo:{repo}"]
         if params.path_prefix.strip():
             terms.append(f"path:{_clean_path(params.path_prefix, allow_empty=False)}")
@@ -493,7 +503,7 @@ def _check_write_path(path: str) -> str | None:
     return None
 
 
-class CreateBranchInput(BaseModel):
+class CreateBranchInput(_RepoTarget):
     name: str = Field(min_length=1, max_length=200, description="New branch name; must start with an allowed prefix (see server_info / GH_PROJECT_WRITE_BRANCH_PREFIXES).")
     from_ref: str = Field(default="", max_length=200, description="Branch or commit SHA to start from; empty = default branch.")
 
@@ -506,9 +516,9 @@ async def create_branch(params: CreateBranchInput) -> dict:
     """
     try:
         await get_service_factory().ensure_auth()
-        repo = _repo()
+        repo = resolve_repository(params.owner, params.repo)
         name = params.name.strip()
-        default_branch = await _default_branch()
+        default_branch = await _default_branch(repo)
         reason = _check_branch(name, default_branch)
         if reason:
             return _invalid(reason, "Choose a branch name with an allowed prefix.")
@@ -543,7 +553,7 @@ class FileChange(BaseModel):
     content: str = Field(max_length=MAX_COMMIT_BYTES, description="Full UTF-8 text content of the file.")
 
 
-class CommitFilesInput(BaseModel):
+class CommitFilesInput(_RepoTarget):
     branch: str = Field(min_length=1, max_length=200, description="Existing branch with an allowed prefix (create it with create_branch).")
     message: str = Field(min_length=1, max_length=2_000, description="Commit message headline (Conventional Commits recommended), optional body after a blank line.")
     files: list[FileChange] = Field(default_factory=list, max_length=MAX_COMMIT_FILES, description="Files to add or overwrite (full content).")
@@ -572,7 +582,7 @@ async def commit_files(params: CommitFilesInput) -> dict:
     """
     try:
         await get_service_factory().ensure_auth()
-        repo = _repo()
+        repo = resolve_repository(params.owner, params.repo)
         branch = params.branch.strip()
         files = list(params.files)
         deletions = list(params.deletions)
@@ -592,7 +602,7 @@ async def commit_files(params: CommitFilesInput) -> dict:
             patch_files = []
         if not files and not deletions and not patch_files:
             return _invalid("nothing to commit", "Pass at least one file or deletion.")
-        default_branch = await _default_branch()
+        default_branch = await _default_branch(repo)
         reason = _check_branch(branch, default_branch)
         if reason:
             return _invalid(reason, "Create an allowed branch with create_branch first.")

@@ -1,19 +1,21 @@
-"""Pull request listing and detail for the configured repository.
+"""Pull request listing and detail.
 
 ``search_issues`` drives ``gh issue list``, which rejects pull-request
 qualifiers, so there was no way to answer "which PRs were merged last?".
-These tools use the REST search and pulls endpoints, are confined to the
-configured repository, and report explicit pagination metadata.
+These tools use the REST search and pulls endpoints, default to the
+configured repository, and report explicit pagination metadata. The
+``owner``/``repo`` overrides are fenced by ``enforce_scope`` so
+``GH_PROJECT_SCOPE_LOCK=true`` still confines them to the configured target.
 """
 from __future__ import annotations
 
 import json
 import re
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
-from core.config import get_settings
+from core.access import resolve_repository
 from core.error_handling import build_error_response, handle_tool_error
 from core.factory import get_service_factory
 from core.hardening import bounded_text
@@ -22,16 +24,22 @@ from models.responses import ToolSuccess
 _MERGED_WINDOW = 100
 
 
-def _repo() -> str:
-    settings = get_settings()
-    return f"{settings.org_name}/{settings.repo_name}"
+class _RepoTarget(BaseModel):
+    owner: Optional[str] = Field(
+        default=None,
+        description="Repository owner. Defaults to GH_PROJECT_ORG_NAME (scope-lock checked).",
+    )
+    repo: Optional[str] = Field(
+        default=None,
+        description="Repository name. Defaults to GH_PROJECT_REPO_NAME (scope-lock checked).",
+    )
 
 
 def _logins(values: Any) -> list[str]:
     return [v.get("login") for v in values or [] if isinstance(v, dict) and v.get("login")]
 
 
-class ListPullRequestsInput(BaseModel):
+class ListPullRequestsInput(_RepoTarget):
     state: str = Field(default="open", pattern=r"^(open|closed|merged|all)$", description="open, closed (closed without merge included), merged, or all.")
     query: str = Field(default="", max_length=256, description="Optional extra GitHub search terms, e.g. 'ADR in:title' or 'label:documentation'.")
     author: str = Field(default="", max_length=100, description="Optional author login.")
@@ -44,7 +52,7 @@ class ListPullRequestsInput(BaseModel):
     @classmethod
     def _no_scope_qualifiers(cls, value: str) -> str:
         if re.search(r"(^|\s)-?(repo|org|user):", value, flags=re.IGNORECASE):
-            raise ValueError("search terms must not contain repo:/org:/user: qualifiers; the repository is fixed")
+            raise ValueError("search terms must not contain repo:/org:/user: qualifiers; use the owner/repo fields to target another repository")
         return value.strip()
 
 
@@ -75,7 +83,7 @@ async def list_pull_requests(params: ListPullRequestsInput) -> dict:
     """
     try:
         await get_service_factory().ensure_auth()
-        repo = _repo()
+        repo = resolve_repository(params.owner, params.repo)
         terms = [f"repo:{repo}", "is:pr"]
         if params.state == "merged":
             terms.append("is:merged")
@@ -135,7 +143,7 @@ async def list_pull_requests(params: ListPullRequestsInput) -> dict:
         return handle_tool_error(exc, context="List pull requests failed")
 
 
-class PullRequestDetailInput(BaseModel):
+class PullRequestDetailInput(_RepoTarget):
     number: int = Field(ge=1, description="Pull request number.")
     include_files: bool = Field(default=True, description="Include the changed files (up to 100).")
     max_body_chars: int = Field(default=8_000, ge=200, le=40_000, description="Maximum characters of the PR description returned.")
@@ -145,7 +153,7 @@ async def get_pull_request_detail(params: PullRequestDetailInput) -> dict:
     """Return one pull request of the configured repository: description, author, branches, state, reviews and changed files."""
     try:
         await get_service_factory().ensure_auth()
-        repo = _repo()
+        repo = resolve_repository(params.owner, params.repo)
         gh = get_service_factory().gh()
 
         async def api(path: str) -> Any:

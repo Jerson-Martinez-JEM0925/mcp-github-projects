@@ -11,7 +11,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from clients.gh_cli_client import CLIError
-from core.config import get_settings
+from core.access import resolve_repository
 from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
 from core.factory import get_service_factory
@@ -19,7 +19,18 @@ from core.factory import get_service_factory
 logger = logging.getLogger(__name__)
 
 
-class CreateLabelInput(BaseModel):
+class _RepoTarget(BaseModel):
+    owner: Optional[str] = Field(
+        default=None,
+        description="Repository owner. Defaults to GH_PROJECT_ORG_NAME (scope-lock checked).",
+    )
+    repo: Optional[str] = Field(
+        default=None,
+        description="Repository name. Defaults to GH_PROJECT_REPO_NAME (scope-lock checked).",
+    )
+
+
+class CreateLabelInput(_RepoTarget):
     """Input schema for the create_label tool."""
 
     name: str = Field(description="Label name (e.g., '🔒 Security')")
@@ -27,7 +38,7 @@ class CreateLabelInput(BaseModel):
     description: Optional[str] = Field(default=None, description="Label description")
 
 
-class ListLabelsInput(BaseModel):
+class ListLabelsInput(_RepoTarget):
     """Input schema for the list_labels tool."""
 
     limit: int = Field(default=50, description="Max labels to return")
@@ -46,8 +57,7 @@ async def create_label(params: CreateLabelInput) -> dict:
     """
     try:
         await get_service_factory().ensure_auth()
-        settings = get_settings()
-        repo = f"{settings.org_name}/{settings.repo_name}"
+        repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
 
         args = ["label", "create", params.name, "--repo", repo,
@@ -89,8 +99,7 @@ async def list_labels(params: ListLabelsInput) -> dict:
     """
     try:
         await get_service_factory().ensure_auth()
-        settings = get_settings()
-        repo = f"{settings.org_name}/{settings.repo_name}"
+        repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
 
         result = await gh_client.run([

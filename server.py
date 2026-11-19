@@ -111,6 +111,7 @@ from tools.deletes import (
 )
 from tools.meta.server_info import server_info
 from tools.pull_requests.listing import PULL_REQUEST_LISTING_TOOLS
+from tools.pull_requests.reviews import PULL_REQUEST_REVIEW_TOOLS
 from tools.repository_content import REPOSITORY_CONTENT_TOOLS
 from tools.project_provisioning import (
     create_project,
@@ -288,6 +289,7 @@ _ALL_TOOLS.extend(QUALITY_TOOLS)
 # pull request listing/detail.
 _ALL_TOOLS.extend(REPOSITORY_CONTENT_TOOLS)
 _ALL_TOOLS.extend(PULL_REQUEST_LISTING_TOOLS)
+_ALL_TOOLS.extend(PULL_REQUEST_REVIEW_TOOLS)
 
 # Extend with the 60-tool capability suite (dynamically-defined functions).
 _ALL_TOOLS.extend(

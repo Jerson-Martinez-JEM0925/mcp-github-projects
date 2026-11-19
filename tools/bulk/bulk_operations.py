@@ -11,7 +11,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 from clients.gh_cli_client import CLIError
-from core.config import get_settings
+from core.access import resolve_repository
 from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
 from core.factory import get_service_factory
@@ -19,7 +19,18 @@ from core.factory import get_service_factory
 logger = logging.getLogger(__name__)
 
 
-class BulkCloseIssuesInput(BaseModel):
+class _RepoTarget(BaseModel):
+    owner: Optional[str] = Field(
+        default=None,
+        description="Repository owner. Defaults to GH_PROJECT_ORG_NAME (scope-lock checked).",
+    )
+    repo: Optional[str] = Field(
+        default=None,
+        description="Repository name. Defaults to GH_PROJECT_REPO_NAME (scope-lock checked).",
+    )
+
+
+class BulkCloseIssuesInput(_RepoTarget):
     """Input schema for the bulk_close_issues tool."""
 
     issue_numbers: list[int] = Field(
@@ -30,7 +41,7 @@ class BulkCloseIssuesInput(BaseModel):
     comment: Optional[str] = Field(default=None, description="Optional comment to add before closing each issue")
 
 
-class SearchIssuesInput(BaseModel):
+class SearchIssuesInput(_RepoTarget):
     """Input schema for the search_issues tool."""
 
     query: str = Field(default="", description="Search text (title/body)")
@@ -60,8 +71,7 @@ async def bulk_close_issues(params: BulkCloseIssuesInput) -> dict:
     """
     try:
         await get_service_factory().ensure_auth()
-        settings = get_settings()
-        repo = f"{settings.org_name}/{settings.repo_name}"
+        repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
 
         results: list[dict] = []
@@ -111,8 +121,7 @@ async def search_issues(params: SearchIssuesInput) -> dict:
     """
     try:
         await get_service_factory().ensure_auth()
-        settings = get_settings()
-        repo = f"{settings.org_name}/{settings.repo_name}"
+        repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
 
         args = ["issue", "list", "--repo", repo, "--state", params.state,

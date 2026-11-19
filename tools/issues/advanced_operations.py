@@ -17,7 +17,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from clients.gh_cli_client import CLIError
-from core.config import get_settings
+from core.access import resolve_repository
 from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
 from core.factory import get_service_factory
@@ -46,12 +46,28 @@ class GetIssueDetailInput(BaseModel):
     """Input schema for the get_issue_detail tool."""
 
     issue_number: int = Field(description="GitHub issue number")
+    owner: str | None = Field(
+        default=None,
+        description="Repository owner. Defaults to GH_PROJECT_ORG_NAME (scope-lock checked).",
+    )
+    repo: str | None = Field(
+        default=None,
+        description="Repository name. Defaults to GH_PROJECT_REPO_NAME (scope-lock checked).",
+    )
 
 
 class ListSubIssuesInput(BaseModel):
     """Input schema for the list_sub_issues tool."""
 
     issue_number: int = Field(description="Parent issue number")
+    owner: str | None = Field(
+        default=None,
+        description="Repository owner. Defaults to GH_PROJECT_ORG_NAME (scope-lock checked).",
+    )
+    repo: str | None = Field(
+        default=None,
+        description="Repository name. Defaults to GH_PROJECT_REPO_NAME (scope-lock checked).",
+    )
 
 
 class RemoveSubIssueInput(BaseModel):
@@ -59,12 +75,28 @@ class RemoveSubIssueInput(BaseModel):
 
     parent_issue_number: int = Field(description="Parent issue number")
     child_issue_number: int = Field(description="Child issue number to remove")
+    owner: str | None = Field(
+        default=None,
+        description="Repository owner. Defaults to GH_PROJECT_ORG_NAME (scope-lock checked).",
+    )
+    repo: str | None = Field(
+        default=None,
+        description="Repository name. Defaults to GH_PROJECT_REPO_NAME (scope-lock checked).",
+    )
 
 
 class ReopenIssueInput(BaseModel):
     """Input schema for the reopen_issue tool."""
 
     issue_number: int = Field(description="GitHub issue number to reopen")
+    owner: str | None = Field(
+        default=None,
+        description="Repository owner. Defaults to GH_PROJECT_ORG_NAME (scope-lock checked).",
+    )
+    repo: str | None = Field(
+        default=None,
+        description="Repository name. Defaults to GH_PROJECT_REPO_NAME (scope-lock checked).",
+    )
 
 
 async def move_to_status(params: MoveToStatusInput) -> dict:
@@ -171,8 +203,7 @@ async def get_issue_detail(params: GetIssueDetailInput) -> dict:
     """
     try:
         await get_service_factory().ensure_auth()
-        settings = get_settings()
-        repo = f"{settings.org_name}/{settings.repo_name}"
+        repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
 
         result = await gh_client.run([
@@ -253,8 +284,7 @@ async def list_sub_issues(params: ListSubIssuesInput) -> dict:
     """
     try:
         await get_service_factory().ensure_auth()
-        settings = get_settings()
-        repo = f"{settings.org_name}/{settings.repo_name}"
+        repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
 
         node_result = await gh_client.run([
@@ -346,8 +376,7 @@ async def remove_sub_issue(params: RemoveSubIssueInput) -> dict:
     """
     try:
         await get_service_factory().ensure_auth()
-        settings = get_settings()
-        repo = f"{settings.org_name}/{settings.repo_name}"
+        repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
 
         parent_result = await gh_client.run([
@@ -419,8 +448,7 @@ async def reopen_issue(params: ReopenIssueInput) -> dict:
     """
     try:
         await get_service_factory().ensure_auth()
-        settings = get_settings()
-        repo = f"{settings.org_name}/{settings.repo_name}"
+        repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
 
         await gh_client.run([

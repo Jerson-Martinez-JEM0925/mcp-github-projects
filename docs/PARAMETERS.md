@@ -432,6 +432,41 @@ PR mutation succeeded but one or more requested metadata operations did not.
 See [Multiple repositories and project scopes](MULTI_SCOPE_CONFIGURATION.md)
 for client-specific configuration.
 
+## list_pull_request_reviews
+
+Lists the reviews submitted on a pull request: reviewer, verdict
+(`APPROVED`, `CHANGES_REQUESTED`, `COMMENTED`, `DISMISSED`, `PENDING`),
+summary body and, optionally, the inline file/line comments attached to
+each review. Also returns `latest_state_by_reviewer` — the newest verdict
+per reviewer — to answer "is this PR approved?" in one call.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `number` | `int` | Required | — | Pull request number |
+| `include_comments` | `bool` | Optional | `true` | Include inline review comments grouped per review |
+| `per_page` | `int` | Optional | `50` | Reviews per page (max 100; `has_more` flags truncation) |
+| `owner` | `string` | Optional | configured owner | GitHub owner override; rejected outside the locked scope |
+| `repo` | `string` | Optional | configured repository | Repository override; rejected outside the locked scope |
+
+## review_pull_request
+
+Submits a pull request review as the authenticated user — in request-auth
+mode that is the calling user, so the review is authored under their GitHub
+identity and bounded by their permissions and the repository's review rules
+(for example, GitHub rejects approving your own PR).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `number` | `int` | Required | — | Pull request number |
+| `event` | `string` | Required | — | `approve`, `request_changes`, or `comment` (feedback without verdict) |
+| `body` | `string` | Optional | `""` | Review summary body; required for `comment` and `request_changes` |
+| `owner` | `string` | Optional | configured owner | GitHub owner override; rejected outside the locked scope |
+| `repo` | `string` | Optional | configured repository | Repository override; rejected outside the locked scope |
+
+`body` is validated: omitting it (or passing whitespace) with
+`event=comment` or `event=request_changes` returns a validation error
+before any GitHub call.
+
 ## Global Configuration
 
 These values apply across all tools and are configured at the server level.
