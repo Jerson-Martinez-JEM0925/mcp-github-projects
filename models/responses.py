@@ -43,3 +43,23 @@ class ToolError(BaseModel):
             "of the call, so it can be quoted when reporting a failure"
         ),
     )
+    retryable: bool | None = Field(
+        default=None,
+        description="True when retrying the same call may succeed (transient fault)",
+    )
+    timeout_seconds: int | None = Field(
+        default=None,
+        description="Configured timeout that was exceeded, for timeout errors",
+    )
+    upstream: str | None = Field(
+        default=None,
+        description="Failing upstream component (e.g. 'github_cli') when known",
+    )
+    endpoint: str | None = Field(
+        default=None,
+        description="Redacted gh command that failed, for transient CLI errors",
+    )
+    attempts: int | None = Field(
+        default=None,
+        description="How many attempts were made before the error was returned",
+    )

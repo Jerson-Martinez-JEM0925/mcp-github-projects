@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`include_reviews` on `get_pull_request_detail`**: new optional flag
+  (default `true`) so callers can fetch core PR metadata without the extra
+  `/reviews` call — combined with the existing `include_files` flag a
+  cheap core-only detail is now possible for batch enrichment. (#146)
+
+### Changed
+
+- **Resilient `gh` CLI calls**: `GHCLIClient.run` now retries
+  `CLITimeoutError` and transient `CLIError`s (rate limit, HTTP 429/5xx,
+  connection faults) with `retry_delay_seconds` backoff, up to
+  `retry_attempts` extra tries (default raised 1 → 2). Default
+  `timeout_seconds` raised 10 → 30 after observing systematic 10-second
+  timeouts on `/files` and `/reviews` endpoints of large repos. (#145)
+
+- **Structured transient-error envelopes**: `ToolError` gained optional
+  `retryable`, `timeout_seconds`, `upstream`, `endpoint` and `attempts`
+  fields, populated for CLI timeouts and transient CLI errors so callers
+  can decide to retry programmatically. (#147)
+
 ## [1.5.0] - 2026-11-19
 
 ### Added

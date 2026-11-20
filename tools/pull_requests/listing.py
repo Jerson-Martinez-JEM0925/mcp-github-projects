@@ -146,6 +146,7 @@ async def list_pull_requests(params: ListPullRequestsInput) -> dict:
 class PullRequestDetailInput(_RepoTarget):
     number: int = Field(ge=1, description="Pull request number.")
     include_files: bool = Field(default=True, description="Include the changed files (up to 100).")
+    include_reviews: bool = Field(default=True, description="Include the review states by user. Set false for a cheap core-only detail.")
     max_body_chars: int = Field(default=8_000, ge=200, le=40_000, description="Maximum characters of the PR description returned.")
 
 
@@ -163,8 +164,10 @@ async def get_pull_request_detail(params: PullRequestDetailInput) -> dict:
         pr = await api(f"repos/{repo}/pulls/{params.number}")
         if not isinstance(pr, dict):
             pr = {}
-        reviews = await api(f"repos/{repo}/pulls/{params.number}/reviews?per_page=100")
-        reviews = reviews if isinstance(reviews, list) else []
+        reviews: list[Any] = []
+        if params.include_reviews:
+            raw_reviews = await api(f"repos/{repo}/pulls/{params.number}/reviews?per_page=100")
+            reviews = raw_reviews if isinstance(raw_reviews, list) else []
         files: list[dict[str, Any]] = []
         if params.include_files:
             raw = await api(f"repos/{repo}/pulls/{params.number}/files?per_page=100")
@@ -194,7 +197,7 @@ async def get_pull_request_detail(params: PullRequestDetailInput) -> dict:
                 "merged_by": (pr.get("merged_by") or {}).get("login"),
                 "labels": [x.get("name") for x in pr.get("labels", []) if isinstance(x, dict)],
                 "requested_reviewers": _logins(pr.get("requested_reviewers")),
-                "reviews_by_user": latest,
+                "reviews_by_user": latest if params.include_reviews else None,
                 "changed_files": pr.get("changed_files"),
                 "additions": pr.get("additions"),
                 "deletions": pr.get("deletions"),

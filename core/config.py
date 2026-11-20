@@ -253,9 +253,9 @@ class GitHubProjectSettings(BaseSettings):
     )
 
     # ── Timeouts & Retry ────────────────────────────────────────
-    timeout_seconds: int = Field(default=10, ge=1, le=120)
+    timeout_seconds: int = Field(default=30, ge=1, le=120)
     retry_delay_seconds: float = Field(default=2.0, ge=0, le=60)
-    retry_attempts: int = Field(default=1, ge=0, le=5)
+    retry_attempts: int = Field(default=2, ge=0, le=5)
 
     # ── Cache ───────────────────────────────────────────────────
     cache_ttl_hours: int = Field(default=24, ge=1, le=720)

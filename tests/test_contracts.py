@@ -404,9 +404,16 @@ class TestStableToolSchemas:
         #   * no required parameter added, removed, or retyped, in any tool;
         #   * review_pull_request.event is a required Literal enum
         #     (approve/request_changes/comment) on a NEW tool only.
+        #
+        # Rebaselined again for issues #145-#147 (gh resilience + detail
+        # granularity). Verified against the diff: the only schema change is
+        # one new OPTIONAL boolean field `include_reviews` (default true) on
+        # get_pull_request_detail; no tool added/removed/renamed and no
+        # required parameter changed. ToolError gained optional envelope
+        # fields but tool input/output schemas are unaffected by that.
         # Do NOT update this value to silence a failure: re-run the same
         # field-by-field comparison first and record the outcome in CHANGELOG.md.
-        assert digest == "bb4a839b1a304ed6f9f932686ee4c015f4e39445bee87942de9c4a30e64c1db0", (
+        assert digest == "1f7ae01afffeb3a8e647a7449f95396820d9d3e5f177468066682a1c0154bd52", (
             f"Stable tool schema digest changed: {digest}. "
             "Update intentionally and document the protocol change."
         )

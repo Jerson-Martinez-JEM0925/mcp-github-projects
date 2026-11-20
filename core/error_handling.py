@@ -119,6 +119,12 @@ def build_error_response(
     message: str,
     suggestion: str | None = None,
     request_id: str | None = None,
+    *,
+    retryable: bool | None = None,
+    timeout_seconds: int | None = None,
+    upstream: str | None = None,
+    endpoint: str | None = None,
+    attempts: int | None = None,
 ) -> dict:
     """Construct a standardized error response dict.
 
@@ -150,6 +156,11 @@ def build_error_response(
         suggestion=suggestion,
         request_id=request_id,
         correlation_id=ctx.correlation_id if ctx else None,
+        retryable=retryable,
+        timeout_seconds=timeout_seconds,
+        upstream=upstream,
+        endpoint=endpoint,
+        attempts=attempts,
     ).model_dump()
 
 
@@ -190,11 +201,39 @@ def handle_tool_error(
                 "Wait until the reset time or use a token with higher limits."
             )
 
+    extra: dict[str, Any] = {}
+    # Late import: clients import this module for GraphQL error handling.
+    from clients.gh_cli_client import CLIError, CLITimeoutError, _is_transient_cli_error
+
+    if isinstance(exc, CLITimeoutError):
+        safe = getattr(exc, "safe_to_retry", True)
+        extra = {
+            "retryable": safe,
+            "timeout_seconds": exc.timeout_seconds,
+            "upstream": "github_cli",
+            "endpoint": exc.command or None,
+            "attempts": getattr(exc, "attempts", None),
+        }
+        if suggestion is None:
+            suggestion = (
+                "Transient timeout — retrying usually succeeds; the client already "
+                "retried per GH_PROJECT_RETRY_ATTEMPTS. For consistently slow repos "
+                "raise GH_PROJECT_TIMEOUT_SECONDS or reduce the requested payload."
+                if safe
+                else "The mutation timed out and may already have been applied — "
+                "verify state on GitHub before retrying to avoid duplicates."
+            )
+    elif isinstance(exc, CLIError) and _is_transient_cli_error(exc):
+        extra = {"retryable": getattr(exc, "safe_to_retry", True), "upstream": "github_cli"}
+        if suggestion is None:
+            suggestion = "Transient GitHub fault (rate limit, 5xx or connectivity) — retry the call."
+
     return build_error_response(
         error_type=error_type,
         message=message,
         suggestion=suggestion,
         request_id=request_id,
+        **extra,
     )
 
 
