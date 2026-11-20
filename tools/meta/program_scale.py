@@ -278,7 +278,7 @@ async def get_branch_rules(params: BranchRulesInput) -> dict:
                     detailed.append(ruleset)
             else:
                 detailed.append(ruleset)
-        return _success({"repository": repo, "branch": params.branch, "branch_protection": protection, "rulesets": detailed, "effective_rules": {"pull_request_required": bool(protection and protection.get("required_pull_request_reviews")), "strict": bool(((protection or {}).get("required_pull_request_reviews") or {}).get("dismiss_stale_reviews"))}})
+        return _success({"repository": repo, "branch": params.branch, "branch_protection": protection, "rulesets": detailed, "effective_rules": {"pull_request_required": bool(protection and protection.get("required_pull_request_reviews")), "strict": bool(((protection or {}).get("required_status_checks") or {}).get("strict")), "required_approvals": ((protection or {}).get("required_pull_request_reviews") or {}).get("required_approving_review_count")}})
     except Exception as exc:
         logger.error("Branch rules failed: %s", exc)
         return handle_tool_error(exc, context="Get branch rules failed")
@@ -434,17 +434,36 @@ async def epic_rollup(params: EpicRollupInput) -> dict:
         repo = _repository(params)
         gh = get_service_factory().gh()
         subissues = await _json(gh, ["api", f"repos/{repo}/issues/{params.epic_issue_number}/sub_issues?per_page=100"], [])
+        project_items: dict[int, Any] = {}
+        hours_by_state: defaultdict[str, float] = defaultdict(float)
+        try:
+            graphql = await get_service_factory().graphql()
+            discovery = await get_service_factory().discovery_service(graphql)
+            project = await get_service_factory().project_service(graphql, gh)
+            metadata = await discovery.get_cached_or_discover()
+            for item in await project.list_all_items(metadata):
+                if item.issue_number is not None:
+                    project_items[item.issue_number] = item
+        except Exception as project_exc:
+            logger.warning("Epic rollup project fields unavailable: %s", project_exc)
         state_counts = Counter(str(x.get("state") or "unknown").lower() for x in subissues if isinstance(x, dict))
         blockers = []
         prs = []
         for issue in subissues if isinstance(subissues, list) else []:
             number = issue.get("number")
+            project_item = project_items.get(number)
+            if project_item is not None:
+                raw_hours = project_item.fields.get(params.numeric_field, project_item.estimate if params.numeric_field.casefold() == "estimate" else 0) or 0
+                try:
+                    hours_by_state[str(issue.get("state") or "unknown").lower()] += float(raw_hours)
+                except (TypeError, ValueError):
+                    pass
             deps = await _json(gh, ["api", f"repos/{repo}/issues/{number}/dependencies/blocked_by"], [])
             if deps:
                 blockers.append({"issue_number": number, "blocked_by": [d.get("number") for d in deps]})
             linked = await _json(gh, ["api", f"repos/{repo}/issues/{number}/timeline?per_page=100"], [])
             prs.extend({"issue_number": number, "pr_number": e.get("source", {}).get("issue", {}).get("number")} for e in linked if isinstance(e, dict) and e.get("event") == "cross-referenced" and e.get("source", {}).get("issue", {}).get("pull_request"))
-        return _success({"repository": repo, "epic_issue_number": params.epic_issue_number, "sub_issue_count": len(subissues) if isinstance(subissues, list) else 0, "states": dict(state_counts), "blockers": blockers, "open_linked_prs": prs})
+        return _success({"repository": repo, "epic_issue_number": params.epic_issue_number, "sub_issue_count": len(subissues) if isinstance(subissues, list) else 0, "states": dict(state_counts), "hours_by_state": {state: round(hours, 2) for state, hours in hours_by_state.items()}, "blockers": blockers, "open_linked_prs": prs})
     except Exception as exc:
         logger.error("Epic rollup failed: %s", exc)
         return handle_tool_error(exc, context="Epic rollup failed")
