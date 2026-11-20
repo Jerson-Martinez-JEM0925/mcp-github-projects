@@ -278,7 +278,19 @@ async def get_branch_rules(params: BranchRulesInput) -> dict:
                     detailed.append(ruleset)
             else:
                 detailed.append(ruleset)
-        return _success({"repository": repo, "branch": params.branch, "branch_protection": protection, "rulesets": detailed, "effective_rules": {"pull_request_required": bool(protection and protection.get("required_pull_request_reviews")), "strict": bool(((protection or {}).get("required_status_checks") or {}).get("strict")), "required_approvals": ((protection or {}).get("required_pull_request_reviews") or {}).get("required_approving_review_count")}})
+        ruleset_rules = [
+            rule
+            for ruleset in detailed
+            for rule in ruleset.get("rules", [])
+            if isinstance(rule, dict)
+        ]
+        pull_request_rules = [r for r in ruleset_rules if r.get("type") == "pull_request"]
+        status_rules = [r for r in ruleset_rules if r.get("type") == "required_status_checks"]
+        required_approvals = max(
+            [int((r.get("parameters") or {}).get("required_approving_review_count", 0)) for r in pull_request_rules] or [0]
+        )
+        strict = any(bool((r.get("parameters") or {}).get("strict_required_status_checks_policy")) for r in status_rules)
+        return _success({"repository": repo, "branch": params.branch, "branch_protection": protection, "rulesets": detailed, "effective_rules": {"pull_request_required": bool((protection or {}).get("required_pull_request_reviews")) or bool(pull_request_rules), "strict": strict or bool(((protection or {}).get("required_status_checks") or {}).get("strict")), "required_approvals": max(required_approvals, int(((protection or {}).get("required_pull_request_reviews") or {}).get("required_approving_review_count", 0)))}})
     except Exception as exc:
         logger.error("Branch rules failed: %s", exc)
         return handle_tool_error(exc, context="Get branch rules failed")
