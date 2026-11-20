@@ -417,3 +417,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for environment-based configuration (`GH_PROJECT_ORG_NAME`, `GH_PROJECT_REPO_NAME`, `GH_PROJECT_PROJECT_NUMBER`)
 - Dry-run mode for mutation-capable tools
 - GraphQL and `gh` CLI dual-client architecture
+
+## Unreleased
+
+- Add merge-readiness, branch comparison, promotion, ruleset, Project progress,
+  body-section, bot-comment, rollup, consistency, stale-branch, and base-branch
+  diagnostics for larger GitHub programs.
+- Add idempotent PR reference keywords, repository filtering, add-item argument
+  compatibility, and validation-aware REST error responses.

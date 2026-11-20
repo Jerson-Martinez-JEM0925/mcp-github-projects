@@ -281,3 +281,24 @@ def resolve_repository(owner: str | None, repo: str | None) -> str:
 
     settings = get_settings()
     return f"{owner or settings.org_name}/{repo or settings.repo_name}"
+
+
+def resolve_repository_target(
+    repository: str | None = None,
+    *,
+    owner: str | None = None,
+    repo: str | None = None,
+) -> str:
+    """Resolve either an ``owner/name`` string or the legacy owner/repo pair.
+
+    The helper gives tools one transversal repository argument while retaining
+    backwards compatibility with existing ``owner`` and ``repo`` fields.
+    """
+    if repository is not None:
+        parts = repository.strip().split("/")
+        if len(parts) != 2 or not all(parts):
+            raise ValueError("repository must use the owner/name format")
+        if owner is not None or repo is not None:
+            raise ValueError("repository cannot be combined with owner or repo")
+        return resolve_repository(parts[0], parts[1])
+    return resolve_repository(owner, repo)

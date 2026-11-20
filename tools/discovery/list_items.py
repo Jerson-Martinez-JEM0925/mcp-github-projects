@@ -13,6 +13,7 @@ import logging
 from pydantic import BaseModel, Field
 
 from core.error_handling import build_error_response, handle_tool_error
+from core.access import resolve_repository_target
 from models.responses import ToolSuccess
 from core.factory import get_service_factory
 
@@ -50,6 +51,10 @@ class ListProjectItemsInput(BaseModel):
     )
     milestone: str | None = Field(
         default=None, description="Filter by milestone title"
+    )
+    repository: str | None = Field(
+        default=None,
+        description="Filter items by repository owner/name on a shared project board.",
     )
     due_date: str | None = Field(
         default=None, description="ISO 8601 date (YYYY-MM-DD)"
@@ -140,6 +145,10 @@ async def list_project_items(
             metadata=metadata,
             filters=filters if filters else None,
         )
+        if params.repository is not None:
+            repository = resolve_repository_target(params.repository)
+            prefix = f"https://github.com/{repository}/".lower()
+            items = [item for item in items if (item.issue_url or "").lower().startswith(prefix)]
 
         # 4. Build response.
         items_data = [item.model_dump(mode="json") for item in items]

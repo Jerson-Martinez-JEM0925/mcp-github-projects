@@ -10,13 +10,14 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import date
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
 from clients.gh_cli_client import CLIError
-from core.access import resolve_repository
+from core.access import resolve_repository_target
 from core.config import get_settings
 from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
@@ -51,6 +52,13 @@ class LinkPullRequestInput(BaseModel):
         default=None,
         description="Repository name. Defaults to GH_PROJECT_REPO_NAME (scope-lock checked).",
     )
+    repository: str | None = Field(
+        default=None,
+        description="Repository as owner/name; cannot be combined with owner or repo.",
+    )
+    keyword: Literal["closes", "fixes", "resolves", "refs", "part_of"] = Field(
+        default="closes", description="Reference keyword used when linking a PR to an issue."
+    )
 
 
 class PullRequestMetadataInput(BaseModel):
@@ -63,6 +71,10 @@ class PullRequestMetadataInput(BaseModel):
     repo: str | None = Field(
         default=None,
         description="Repository name. Defaults to GH_PROJECT_REPO_NAME (scope-lock checked).",
+    )
+    repository: str | None = Field(
+        default=None,
+        description="Repository as owner/name; cannot be combined with owner or repo.",
     )
 
     reviewers: list[str] | None = Field(
@@ -215,6 +227,10 @@ class BulkAssignInput(BaseModel):
     repo: Optional[str] = Field(
         default=None,
         description="Repository name. Defaults to GH_PROJECT_REPO_NAME (scope-lock checked).",
+    )
+    repository: Optional[str] = Field(
+        default=None,
+        description="Repository as owner/name; cannot be combined with owner or repo.",
     )
 
 
@@ -392,7 +408,7 @@ async def link_pull_request(params: LinkPullRequestInput) -> dict:
     """
     try:
         await get_service_factory().ensure_auth()
-        repo = resolve_repository(params.owner, params.repo)
+        repo = resolve_repository_target(params.repository, owner=params.owner, repo=params.repo)
         gh_client = get_service_factory().gh()
 
         pr_result = await gh_client.run([
@@ -403,9 +419,24 @@ async def link_pull_request(params: LinkPullRequestInput) -> dict:
         pr_url = pr_data.get("url", "")
         pr_body = pr_data.get("body", "")
 
-        close_ref = f"Closes #{params.issue_number}"
-        if close_ref.lower() not in pr_body.lower():
-            new_body = f"{pr_body}\n\n{close_ref}" if pr_body else close_ref
+        keyword_labels = {
+            "closes": "Closes",
+            "fixes": "Fixes",
+            "resolves": "Resolves",
+            "refs": "Refs",
+            "part_of": "Part of",
+        }
+        keyword_label = keyword_labels[params.keyword]
+        reference = f"{keyword_label} #{params.issue_number}"
+        reference_pattern = re.compile(
+            rf"^\s*(?:Closes|Fixes|Resolves|Refs|Part of)\s+#{params.issue_number}\s*$",
+            re.IGNORECASE | re.MULTILINE,
+        )
+        if reference_pattern.search(pr_body):
+            new_body = reference_pattern.sub(reference, pr_body, count=1)
+        else:
+            new_body = f"{pr_body}\n\n{reference}" if pr_body else reference
+        if new_body != pr_body:
             await gh_client.run([
                 "pr", "edit", str(params.pr_number), "--repo", repo,
                 "--body", new_body,
@@ -680,7 +711,7 @@ async def create_pull_request(params: CreatePullRequestInput) -> dict:
     try:
         await get_service_factory().ensure_auth()
         settings = get_settings()
-        repo = resolve_repository(params.owner, params.repo)
+        repo = resolve_repository_target(params.repository, owner=params.owner, repo=params.repo)
         gh_client = get_service_factory().gh()
 
         api_args = [
@@ -732,6 +763,34 @@ async def create_pull_request(params: CreatePullRequestInput) -> dict:
             add_result = await add_item_to_project(
                 AddItemToProjectInput(issue_or_pr_number=pr_number)
             )
+            if add_result.get("ok"):
+                try:
+                    graphql_client = await get_service_factory().graphql()
+                    discovery = await get_service_factory().discovery_service(graphql_client)
+                    project_service = await get_service_factory().project_service(
+                        graphql_client, gh_client
+                    )
+                    metadata = await discovery.get_cached_or_discover()
+                    verified_item_id = await project_service.resolve_item_id(
+                        metadata, pr_number, repository=repo
+                    )
+                    if not verified_item_id:
+                        content_id = await project_service.resolve_content_id(pr_number)
+                        verified_item_id = await project_service.add_item_by_content_id(
+                            metadata, content_id
+                        )
+                        verified_item_id = await project_service.resolve_item_id(
+                            metadata, pr_number, repository=repo
+                        ) or verified_item_id
+                    add_result.setdefault("data", {})["verified_item_id"] = verified_item_id
+                    add_result["data"]["verification"] = "confirmed" if verified_item_id else "not_found"
+                    if not verified_item_id:
+                        add_result["data"]["verification_error"] = (
+                            "GitHub accepted the add request but the item was not visible on the project after retry."
+                        )
+                except Exception as verification_exc:
+                    add_result.setdefault("data", {})["verification"] = "failed"
+                    add_result["data"]["verification_error"] = str(verification_exc)
             data["add_to_project_result"] = add_result
 
         metadata_results = await _apply_pull_request_metadata(
@@ -762,12 +821,15 @@ async def create_pull_request(params: CreatePullRequestInput) -> dict:
         )
     except CLIError as exc:
         logger.error("CLI error in create_pull_request: %s", exc)
+        error_text = exc.stderr.strip()
+        is_validation = "422" in error_text or "validation failed" in error_text.lower()
         return build_error_response(
-            error_type="internal",
-            message=f"Failed to create PR: {exc.stderr.strip()}",
+            error_type="validation" if is_validation else "internal",
+            message=f"Failed to create PR: {error_text}",
             suggestion=(
-                "Verify the head branch exists and is pushed, the base branch "
-                "is correct, and no PR already exists for this head branch."
+                "GitHub rejected the request; inspect the reported validation detail and reconcile the PR."
+                if is_validation else
+                "Verify the head branch exists and is pushed, the base branch is correct, and no PR already exists for this head branch."
             ),
         )
     except Exception as exc:
@@ -840,7 +902,7 @@ async def update_pull_request(params: UpdatePullRequestInput) -> dict:
             )
 
         await get_service_factory().ensure_auth()
-        repo = resolve_repository(params.owner, params.repo)
+        repo = resolve_repository_target(params.repository, owner=params.owner, repo=params.repo)
         gh_client = get_service_factory().gh()
 
         api_args = [
@@ -919,12 +981,15 @@ async def update_pull_request(params: UpdatePullRequestInput) -> dict:
         )
     except CLIError as exc:
         logger.error("CLI error in update_pull_request: %s", exc)
+        error_text = exc.stderr.strip()
+        is_validation = "422" in error_text or "validation failed" in error_text.lower()
         return build_error_response(
-            error_type="internal",
-            message=f"Failed to update PR: {exc.stderr.strip()}",
+            error_type="validation" if is_validation else "internal",
+            message=f"Failed to update PR: {error_text}",
             suggestion=(
-                "Verify the pull request number exists, the base branch is "
-                "valid, and the token has pull-request write scope."
+                "GitHub rejected the request; inspect the reported validation detail and reconcile the PR."
+                if is_validation else
+                "Verify the pull request number exists, the base branch is valid, and the token has pull-request write scope."
             ),
         )
     except Exception as exc:
@@ -943,7 +1008,7 @@ async def bulk_assign(params: BulkAssignInput) -> dict:
     """
     try:
         await get_service_factory().ensure_auth()
-        repo = resolve_repository(params.owner, params.repo)
+        repo = resolve_repository_target(params.repository, owner=params.owner, repo=params.repo)
         gh_client = get_service_factory().gh()
 
         if not params.assignees and not params.milestone:

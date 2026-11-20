@@ -220,6 +220,7 @@ class ProjectService:
         self,
         metadata: ProjectMetadata,
         issue_or_pr_number: int,
+        repository: str | None = None,
     ) -> str | None:
         """Resolve a project item node ID from an issue / PR number.
 
@@ -244,7 +245,7 @@ class ProjectService:
         """
         items = await self._fetch_all_items(metadata, get_settings().max_items)
         matches = [item for item in items if item.issue_number == issue_or_pr_number]
-        repository = self._context.target.repository_full_name
+        repository = repository or self._context.target.repository_full_name
         if repository:
             prefix = f"https://github.com/{repository}/".lower()
             matches = [

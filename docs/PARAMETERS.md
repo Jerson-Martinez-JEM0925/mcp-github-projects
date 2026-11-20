@@ -488,3 +488,28 @@ These values apply across all tools and are configured at the server level.
 | CLI output limit | `1,000,000` chars | Maximum gh CLI output retained in memory |
 | Estimate range | `0.25–9999` | Valid numeric range for time estimates in hours |
 | Estimate granularity | `0.25` | Minimum increment for estimate values (quarter-hour) |
+
+## Program-scale tools
+
+The following tools accept `repository` as an optional `owner/name` target;
+`repository` is mutually exclusive with the legacy `owner` and `repo` pair.
+
+| Tool | Required parameters | Notable optional parameters |
+|------|---------------------|-----------------------------|
+| `get_pull_request_merge_readiness` | `pull_number` | repository target |
+| `compare_branches` | `base`, `head` | repository target |
+| `create_promotion_pull_request` | `base`, `head` | `title`, `body`, `draft`, `back_merge` |
+| `list_repository_rulesets` | — | `diff_ruleset` JSON snapshot |
+| `get_branch_rules` | `branch` | repository target |
+| `project_progress_report` | `numeric_field` | `group_by`, `repository_filter`, `label`, `epic_issue_number` |
+| `upsert_issue_body_section` | `number`, `section`, `content` | `kind` (`issue` or `pull_request`) |
+| `get_pull_request_bot_comments` | `pull_number` | `author`, `pattern`, `extract_terraform_plan` |
+| `bulk_link_pull_requests` | `links` | `keyword` |
+| `epic_rollup` | `epic_issue_number` | `numeric_field` |
+| `project_items_consistency_check` | `expected` | repository target |
+| `find_stale_branches` | — | `stale_days`, `include_protected` |
+| `list_open_prs_by_base` | — | `base` |
+
+`link_pull_request` supports the compatibility-preserving default keyword
+`closes` plus `fixes`, `resolves`, `refs`, and `part_of`. Existing reference
+lines for the same issue are replaced instead of duplicated.

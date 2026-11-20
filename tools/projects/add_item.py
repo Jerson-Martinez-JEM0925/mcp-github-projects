@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
@@ -24,10 +24,24 @@ logger = logging.getLogger(__name__)
 class AddItemToProjectInput(BaseModel):
     """Input schema for the add_item_to_project tool."""
 
-    issue_or_pr_number: int = Field(
+    issue_or_pr_number: int | None = Field(
+        default=None,
         gt=0,
         description="Issue or pull-request number to add to the project board",
     )
+    issue_number: int | None = Field(
+        default=None,
+        gt=0,
+        description="Compatibility alias for issue_or_pr_number",
+    )
+
+    @model_validator(mode="after")
+    def require_number(self) -> "AddItemToProjectInput":
+        if self.issue_or_pr_number is not None and self.issue_number is not None and self.issue_or_pr_number != self.issue_number:
+            raise ValueError("issue_or_pr_number and issue_number must match when both are provided")
+        if self.issue_or_pr_number is None:
+            self.issue_or_pr_number = self.issue_number
+        return self
 
 
 async def add_item_to_project(params: AddItemToProjectInput) -> dict:
@@ -45,6 +59,12 @@ async def add_item_to_project(params: AddItemToProjectInput) -> dict:
         or ToolError on failure.
     """
     try:
+        if params.issue_or_pr_number is None:
+            return build_error_response(
+                error_type="validation",
+                message="Provide issue_or_pr_number or issue_number.",
+                suggestion="Pass the issue or pull-request number to add.",
+            )
         graphql_client = await get_service_factory().graphql()
         gh_client = get_service_factory().gh()
 

@@ -99,6 +99,21 @@ from tools.pull_requests.pr_issue_lifecycle import (
     sync_closed_items_to_done,
 )
 from tools.meta import capability_suite
+from tools.meta.program_scale import (
+    get_pull_request_merge_readiness,
+    compare_branches,
+    create_promotion_pull_request,
+    list_repository_rulesets,
+    get_branch_rules,
+    project_progress_report,
+    upsert_issue_body_section,
+    get_pull_request_bot_comments,
+    bulk_link_pull_requests,
+    epic_rollup,
+    project_items_consistency_check,
+    find_stale_branches,
+    list_open_prs_by_base,
+)
 from tools.ci.actions import CI_TOOLS
 from tools.quality import QUALITY_TOOLS
 from tools.projects.board_structure import BOARD_STRUCTURE_TOOLS
@@ -243,6 +258,19 @@ _ALL_TOOLS: list = [
     link_pull_request,
     create_pull_request,
     update_pull_request,
+    get_pull_request_merge_readiness,
+    compare_branches,
+    create_promotion_pull_request,
+    list_repository_rulesets,
+    get_branch_rules,
+    project_progress_report,
+    upsert_issue_body_section,
+    get_pull_request_bot_comments,
+    bulk_link_pull_requests,
+    epic_rollup,
+    project_items_consistency_check,
+    find_stale_branches,
+    list_open_prs_by_base,
     create_repository,
     bulk_assign,
     sprint_planning,
