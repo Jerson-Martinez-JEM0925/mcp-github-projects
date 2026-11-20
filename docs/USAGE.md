@@ -978,3 +978,33 @@ so the trail works in both directions.
 
 - Group issues by phase with **milestones** whose due date comes from the estimation timeline (business days).
 - Mark **priority** with a `priority: critical|high|medium|low` label.
+
+## Program-scale diagnostics and traceability
+
+The server also exposes read-oriented helpers for promotion workflows and
+large Projects V2 boards:
+
+- `get_pull_request_merge_readiness` combines mergeability, reviews, checks,
+  branch protection and rulesets into a diagnosis and suggested action.
+- `compare_branches` reports ahead/behind counts, commits, included PRs and
+  changed-file statistics.
+- `list_repository_rulesets` and `get_branch_rules` inspect effective branch
+  controls; the former accepts an optional JSON snapshot for drift detection.
+- `project_progress_report` aggregates a numeric Project field by Status or
+  another field, with item and numeric-value percentages.
+- `get_pull_request_bot_comments` filters bot comments and can extract
+  Terraform plan counts.
+- `find_stale_branches` and `list_open_prs_by_base` support promotion cleanup.
+- `project_items_consistency_check` compares expected field values with the
+  live board, while `epic_rollup` summarizes sub-issues and blockers.
+
+Traceability helpers include `upsert_issue_body_section`, which uses stable
+HTML markers and is idempotent, `bulk_link_pull_requests`, and
+`create_promotion_pull_request`, which generates an evidence table from the
+PRs associated with a branch comparison. `link_pull_request` accepts
+`closes`, `fixes`, `resolves`, `refs`, or `part_of`; its default remains
+`closes` for compatibility.
+
+Tools that inspect a shared Project can filter `list_project_items` by a
+`repository` value in `owner/name` form. `add_item_to_project` accepts both
+`issue_or_pr_number` and its `issue_number` compatibility alias.

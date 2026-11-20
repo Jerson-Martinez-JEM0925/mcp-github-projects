@@ -108,8 +108,17 @@ def classify_error(exc: Exception) -> str:
     if isinstance(exc, TimeoutError):
         return ERROR_TYPE_INTERNAL
 
-    if isinstance(exc, GitHubProjectError):
-        return ERROR_TYPE_INTERNAL
+    # gh wraps REST 422 responses in CLIError; preserve GitHub's validation
+    # classification instead of collapsing the actionable message to internal.
+    from clients.gh_cli_client import CLIError
+
+    if isinstance(exc, CLIError):
+        text = f"{exc} {exc.stderr}".lower()
+        if "422" in text or "validation failed" in text:
+            return ERROR_TYPE_VALIDATION
+        if "not found" in text or "could not resolve" in text:
+            return ERROR_TYPE_NOT_FOUND
+
 
     return ERROR_TYPE_INTERNAL
 

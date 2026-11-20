@@ -188,3 +188,13 @@ validation errors. Raw GitHub responses and credentials are never exposed.
 For least privilege, repository creation should be performed with a token that
 has repository administration permission for the selected owner. Do not grant
 that permission to read-only automation tokens.
+
+## Program-scale capability additions
+
+The merge-readiness and repository-inspection tools are read-only and require
+only the corresponding pull-request, Actions, or contents read capability.
+Promotion PR creation, body-section upserts, and bulk traceability links are
+write tools. `project_progress_report`, `project_items_consistency_check`,
+and `epic_rollup` are read-only reports and inherit the minimum capabilities of
+the data they aggregate. Access-level registration remains derived from
+`core/capabilities.py`.

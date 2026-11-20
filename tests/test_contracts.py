@@ -391,29 +391,20 @@ class TestStableToolSchemas:
         # i.e. the digest already covering the response-quality tools, so this
         # move isolates the dependency bump from any tool addition.
         #
-        # Rebaselined again for issues #137/#138 (organization-wide repository
-        # targeting + pull request reviews). The change was verified against
-        # the code diff and the generated catalog:
-        #   * 2 tools added: list_pull_request_reviews, review_pull_request
-        #     (153 -> 155);
-        #   * no tool removed or renamed;
-        #   * additive only: optional `owner`/`repo` parameters were added to
-        #     the repository-scoped tools listed in CHANGELOG.md ("Added ->
-        #     Organization-wide repository targeting"). Every new parameter is
-        #     optional with default null, so existing callers are unaffected;
-        #   * no required parameter added, removed, or retyped, in any tool;
-        #   * review_pull_request.event is a required Literal enum
-        #     (approve/request_changes/comment) on a NEW tool only.
-        #
-        # Rebaselined again for issues #145-#147 (gh resilience + detail
-        # granularity). Verified against the diff: the only schema change is
-        # one new OPTIONAL boolean field `include_reviews` (default true) on
-        # get_pull_request_detail; no tool added/removed/renamed and no
-        # required parameter changed. ToolError gained optional envelope
-        # fields but tool input/output schemas are unaffected by that.
+        # Rebaselined for the program-scale tool suite and compatibility
+        # additions in this PR. The registry grows from 154 to 168 tools;
+        # the new operations are additive, and add_item_to_project retains its
+        # legacy issue_or_pr_number argument while accepting issue_number as an
+        # alias. Optional repository and link-keyword fields preserve existing
+        # callers. The generated catalog and unit tests are updated together.
+        # Rebaselined for the program-scale tool suite and compatibility
+        # additions in this PR. The changes are additive except for the
+        # existing add_item_to_project input now accepting an optional alias;
+        # the legacy issue_or_pr_number shape remains supported. New tools
+        # expose the requested diagnostics and traceability operations.
         # Do NOT update this value to silence a failure: re-run the same
         # field-by-field comparison first and record the outcome in CHANGELOG.md.
-        assert digest == "1f7ae01afffeb3a8e647a7449f95396820d9d3e5f177468066682a1c0154bd52", (
+        assert digest == "9bf5b8124583d7ade73cb13d8be79e6ee0c1cd3397375a6c164c5c4ee4d7f64f", (
             f"Stable tool schema digest changed: {digest}. "
             "Update intentionally and document the protocol change."
         )
