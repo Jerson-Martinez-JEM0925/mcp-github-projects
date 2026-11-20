@@ -13,9 +13,13 @@ from tools.meta.nice_to_have import LinkPullRequestInput, link_pull_request
 from tools.meta.program_scale import (
     CompareBranchesInput,
     BotCommentsInput,
+    MergeReadinessInput,
+    PromotionPullRequestInput,
     UpsertIssueBodySectionInput,
     compare_branches,
+    create_promotion_pull_request,
     get_pull_request_bot_comments,
+    get_pull_request_merge_readiness,
     upsert_issue_body_section,
 )
 from tools.projects.add_item import AddItemToProjectInput
@@ -66,17 +70,85 @@ async def test_compare_branches_returns_commit_and_file_summary() -> None:
             "ahead_by": 2,
             "behind_by": 1,
             "status": "ahead",
-            "commits": [{"sha": "abc", "commit": {"message": "one\nbody"}}],
+            "total_commits": 2,
+            "commits": [
+                {"sha": "abc", "commit": {"message": "one\nbody"}},
+                {"sha": "def", "commit": {"message": "Merge pull request #9 from example-org/feature"}},
+            ],
             "files": [{"filename": "app.py", "additions": 3, "deletions": 1, "changes": 4}],
         },
-        [{"number": 9, "title": "Feature", "state": "open", "html_url": "https://github.com/example-org/example-repo/pull/9"}],
+        [{"number": 9, "title": "Feature", "state": "closed", "merged_at": "2026-01-01T00:00:00Z",
+          "html_url": "https://github.com/example-org/example-repo/pull/9", "head": {"ref": "feat/x"}, "base": {"ref": "dev"}}],
+        [{"number": 9, "title": "Feature", "state": "closed", "merged_at": "2026-01-01T00:00:00Z",
+          "html_url": "https://github.com/example-org/example-repo/pull/9", "head": {"ref": "feat/x"}, "base": {"ref": "dev"}}],
     ])
     with use_service_factory(gh_client=gh):
         result = await compare_branches(CompareBranchesInput(base="qa", head="dev", repository="example-org/example-repo"))
     assert result["ok"] is True
     assert result["data"]["ahead"] == 2
     assert result["data"]["file_totals"]["additions"] == 3
-    assert "head=example-org:dev" in " ".join(gh.calls[1])
+    # Included PRs come from the compared commits (deduplicated), not from PRs whose head is the branch.
+    assert [p["number"] for p in result["data"]["pull_requests"]] == [9]
+    assert result["data"]["pull_requests_truncated"] is False
+    assert gh.calls[1][1] == "repos/example-org/example-repo/commits/abc/pulls?per_page=100"
+    assert all("head=example-org:dev" not in " ".join(call) for call in gh.calls)
+
+
+@pytest.mark.anyio
+async def test_compare_branches_excludes_earlier_promotions_and_unmerged_prs() -> None:
+    gh = FakeGH([
+        {"ahead_by": 1, "behind_by": 0, "status": "ahead", "total_commits": 1,
+         "commits": [{"sha": "m1", "commit": {"message": "Merge"}}], "files": []},
+        [
+            {"number": 3, "title": "Earlier promotion", "merged_at": "2026-01-01T00:00:00Z", "head": {"ref": "dev"}, "base": {"ref": "qa"}},
+            {"number": 4, "title": "Open draft", "merged_at": None, "head": {"ref": "feat/y"}, "base": {"ref": "dev"}},
+            {"number": 5, "title": "Real change", "merged_at": "2026-01-02T00:00:00Z", "head": {"ref": "fix/z"}, "base": {"ref": "dev"}},
+        ],
+    ])
+    with use_service_factory(gh_client=gh):
+        result = await compare_branches(CompareBranchesInput(base="qa", head="dev", repository="example-org/example-repo"))
+    assert [p["number"] for p in result["data"]["pull_requests"]] == [5]
+
+
+@pytest.mark.anyio
+async def test_promotion_pull_request_lists_prs_from_compared_commits() -> None:
+    gh = FakeGH([
+        {"ahead_by": 1, "behind_by": 0, "status": "ahead", "total_commits": 1,
+         "commits": [{"sha": "m1", "commit": {"message": "Merge"}}], "files": []},
+        [{"number": 5, "title": "Real | change", "merged_at": "2026-01-02T00:00:00Z", "head": {"ref": "fix/z"}, "base": {"ref": "dev"}}],
+        {"number": 6, "html_url": "https://github.com/example-org/example-repo/pull/6"},
+    ])
+    with use_service_factory(gh_client=gh):
+        result = await create_promotion_pull_request(
+            PromotionPullRequestInput(head="dev", base="qa", repository="example-org/example-repo")
+        )
+    assert result["ok"] is True
+    assert result["data"]["included_pull_requests"] == [5]
+    body = next(arg for arg in gh.calls[2] if arg.startswith("body="))
+    assert "| #5 | Real \\| change |" in body
+
+
+@pytest.mark.anyio
+async def test_merge_readiness_ignores_comments_after_an_approval() -> None:
+    gh = FakeGH([
+        {"number": 1, "state": "open", "draft": False, "mergeable": True, "mergeable_state": "clean",
+         "base": {"ref": "main"}, "head": {"ref": "qa", "sha": "abc"}},
+        {"check_runs": [{"name": "Tests", "status": "completed", "conclusion": "success"}]},
+        {"statuses": []},
+        [
+            {"user": {"login": "reviewer"}, "state": "APPROVED"},
+            {"user": {"login": "reviewer"}, "state": "COMMENTED"},
+        ],
+        {},
+        [],
+        {"ahead_by": 1, "behind_by": 0},
+    ])
+    with use_service_factory(gh_client=gh):
+        result = await get_pull_request_merge_readiness(
+            MergeReadinessInput(pull_number=1, repository="example-org/example-repo")
+        )
+    assert result["ok"] is True
+    assert result["data"]["reviewDecision"] == "APPROVED"
 
 
 @pytest.mark.anyio

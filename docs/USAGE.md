@@ -986,8 +986,9 @@ large Projects V2 boards:
 
 - `get_pull_request_merge_readiness` combines mergeability, reviews, checks,
   branch protection and rulesets into a diagnosis and suggested action.
-- `compare_branches` reports ahead/behind counts, commits, included PRs and
-  changed-file statistics.
+- `compare_branches` reports ahead/behind counts, commits, the merged PRs
+  included in `base...head` (resolved from the compared commits, excluding
+  earlier promotions) and changed-file statistics.
 - `list_repository_rulesets` and `get_branch_rules` inspect effective branch
   controls; the former accepts an optional JSON snapshot for drift detection.
 - `project_progress_report` aggregates a numeric Project field by Status or

@@ -62,6 +62,43 @@ def _success(data: dict[str, Any]) -> dict:
     return ToolSuccess(data=data).model_dump()
 
 
+# GitHub's compare API returns at most 250 commits; associated-PR lookups are one call per commit, so they are capped.
+_MAX_COMMITS_FOR_PR_LOOKUP = 250
+
+
+async def _pull_requests_in_comparison(gh: Any, repo: str, comparison: dict, base: str, head: str) -> dict[str, Any]:
+    """Return the merged pull requests whose commits are in ``base...head``.
+
+    The included PRs of a promotion are the ones merged into ``head`` that ``base`` does not contain yet, so they are
+    resolved from the compared commits (``GET /repos/{repo}/commits/{sha}/pulls``), not from PRs whose head branch is
+    ``head`` (those are earlier promotions). Earlier promotion PRs ``head -> base`` are excluded.
+    """
+    commits = comparison.get("commits", []) if isinstance(comparison, dict) else []
+    shas = [c.get("sha") for c in commits if isinstance(c, dict) and c.get("sha")]
+    seen: dict[int, dict[str, Any]] = {}
+    for sha in shas[:_MAX_COMMITS_FOR_PR_LOOKUP]:
+        prs = await _json(gh, ["api", f"repos/{repo}/commits/{sha}/pulls?per_page=100"], [])
+        for p in prs if isinstance(prs, list) else []:
+            if not isinstance(p, dict) or p.get("number") is None or not p.get("merged_at"):
+                continue
+            if (p.get("head") or {}).get("ref") == head and (p.get("base") or {}).get("ref") == base:
+                continue
+            seen.setdefault(int(p["number"]), {
+                "number": p.get("number"),
+                "title": p.get("title"),
+                "state": p.get("state"),
+                "url": p.get("html_url"),
+                "base": (p.get("base") or {}).get("ref"),
+                "merged_at": p.get("merged_at"),
+            })
+    total = comparison.get("total_commits", len(shas)) if isinstance(comparison, dict) else len(shas)
+    return {
+        "pull_requests": sorted(seen.values(), key=lambda p: p["number"]),
+        "commits_scanned": min(len(shas), _MAX_COMMITS_FOR_PR_LOOKUP),
+        "truncated": bool(total and total > min(len(shas), _MAX_COMMITS_FOR_PR_LOOKUP)),
+    }
+
+
 def _error(message: str, *, error_type: str = "validation", suggestion: str | None = None) -> dict:
     return build_error_response(error_type=error_type, message=message, suggestion=suggestion)
 
@@ -108,7 +145,14 @@ async def get_pull_request_merge_readiness(params: MergeReadinessInput) -> dict:
         latest_reviews: dict[str, str] = {}
         for review in reviews if isinstance(reviews, list) else []:
             user = ((review.get("user") or {}).get("login") or "unknown")
-            latest_reviews[user] = str(review.get("state") or "PENDING").upper()
+            state = str(review.get("state") or "PENDING").upper()
+            # A comment or a pending draft does not change a reviewer's decision; a dismissal withdraws it.
+            if state in {"COMMENTED", "PENDING"}:
+                continue
+            if state == "DISMISSED":
+                latest_reviews.pop(user, None)
+                continue
+            latest_reviews[user] = state
         review_decision = "CHANGES_REQUESTED" if "CHANGES_REQUESTED" in latest_reviews.values() else ("APPROVED" if latest_reviews and all(v == "APPROVED" for v in latest_reviews.values()) else "REVIEW_REQUIRED")
         mergeable = pr.get("mergeable")
         merge_state = str(pr.get("mergeable_state") or "UNKNOWN").upper()
@@ -159,7 +203,7 @@ async def compare_branches(params: CompareBranchesInput) -> dict:
         repo = _repository(params)
         gh = get_service_factory().gh()
         comparison = await _json(gh, ["api", f"repos/{repo}/compare/{params.base}...{params.head}"], {})
-        prs = await _json(gh, ["api", f"repos/{repo}/pulls?state=all&base={params.base}&head={repo.split('/')[0]}:{params.head}&per_page=100"], [])
+        included = await _pull_requests_in_comparison(gh, repo, comparison, params.base, params.head)
         files = comparison.get("files", []) if isinstance(comparison, dict) else []
         return _success({
             "repository": repo,
@@ -169,7 +213,8 @@ async def compare_branches(params: CompareBranchesInput) -> dict:
             "behind": comparison.get("behind_by"),
             "status": comparison.get("status"),
             "commits": [{"sha": c.get("sha"), "message": (c.get("commit") or {}).get("message", "").splitlines()[0]} for c in comparison.get("commits", [])],
-            "pull_requests": [{"number": p.get("number"), "title": p.get("title"), "state": p.get("state"), "url": p.get("html_url")} for p in prs if isinstance(p, dict)],
+            "pull_requests": included["pull_requests"],
+            "pull_requests_truncated": included["truncated"],
             "files": [{"filename": f.get("filename"), "status": f.get("status"), "additions": f.get("additions", 0), "deletions": f.get("deletions", 0), "changes": f.get("changes", 0)} for f in files],
             "file_totals": {"files": len(files), "additions": sum(f.get("additions", 0) for f in files), "deletions": sum(f.get("deletions", 0) for f in files)},
         })
@@ -195,19 +240,21 @@ async def create_promotion_pull_request(params: PromotionPullRequestInput) -> di
         repo = _repository(params)
         gh = get_service_factory().gh()
         comparison = await _json(gh, ["api", f"repos/{repo}/compare/{params.base}...{params.head}"], {})
-        prs = await _json(gh, ["api", f"repos/{repo}/pulls?state=all&base={params.base}&head={repo.split('/')[0]}:{params.head}&per_page=100"], [])
+        included = await _pull_requests_in_comparison(gh, repo, comparison, params.base, params.head)
+        prs = included["pull_requests"]
         rows = []
-        for p in prs if isinstance(prs, list) else []:
-            if isinstance(p, dict):
-                title = str(p.get("title") or "").replace("|", "\\|")
-                rows.append(f"| #{p.get('number')} | {title} |")
+        for p in prs:
+            title = str(p.get("title") or "").replace("|", "\\|")
+            rows.append(f"| #{p.get('number')} | {title} |")
         generated = "## Included pull requests\n\n| PR | Title |\n| --- | --- |\n" + ("\n".join(rows) or "| — | No pull requests found |")
+        if included["truncated"]:
+            generated += "\n\n> The comparison has more commits than were scanned; the table may be incomplete."
         if comparison.get("behind_by", 0):
             generated += f"\n\n> The base branch is {comparison['behind_by']} commit(s) ahead of the promotion head. Consider a back-merge before merging."
         body = (params.body.rstrip() + "\n\n" if params.body else "") + generated
         result = await gh.run(["api", "--method", "POST", f"repos/{repo}/pulls", "-f", f"title={params.title or f'{params.head} → {params.base} promotion'}", "-f", f"head={params.head}", "-f", f"base={params.base}", "-f", f"body={body}", "-F", f"draft={'true' if params.draft else 'false'}"])
         pr = json.loads(result.stdout)
-        data = {"repository": repo, "pr_number": pr.get("number"), "pr_url": pr.get("html_url"), "head": params.head, "base": params.base, "ahead": comparison.get("ahead_by"), "behind": comparison.get("behind_by"), "included_pull_requests": [p.get("number") for p in prs if isinstance(p, dict)], "back_merge_required": bool(comparison.get("behind_by")), "back_merge_requested": params.back_merge}
+        data = {"repository": repo, "pr_number": pr.get("number"), "pr_url": pr.get("html_url"), "head": params.head, "base": params.base, "ahead": comparison.get("ahead_by"), "behind": comparison.get("behind_by"), "included_pull_requests": [p.get("number") for p in prs], "back_merge_required": bool(comparison.get("behind_by")), "back_merge_requested": params.back_merge}
         if params.back_merge and comparison.get("behind_by"):
             back_result = await gh.run(["api", "--method", "POST", f"repos/{repo}/pulls", "-f", f"title=Back-merge {params.base} into {params.head}", "-f", f"head={params.base}", "-f", f"base={params.head}", "-f", "body=Back-merge the promoted base branch to keep the source branch current."])
             back_pr = json.loads(back_result.stdout)

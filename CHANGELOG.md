@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`compare_branches` and `create_promotion_pull_request` list the pull
+  requests actually included in `base...head`**: they now resolve the merged
+  PRs associated with each compared commit (`commits/{sha}/pulls`), deduplicated
+  and excluding earlier `head → base` promotions. Before, they listed PRs whose
+  head branch was `head`, which in a promotion model are previous promotion PRs,
+  so the "included pull requests" table was empty or wrong. A
+  `pull_requests_truncated` flag reports when the comparison has more commits
+  than were scanned.
+- **`get_pull_request_merge_readiness` review decision**: a later `COMMENTED`
+  or `PENDING` review no longer overrides a reviewer's approval, and a
+  `DISMISSED` review withdraws that reviewer's decision.
+
 ## [1.5.1] - 2026-11-20
 
 ### Added
