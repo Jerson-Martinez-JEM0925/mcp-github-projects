@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-11-20
+
 ### Added
 
 - **`include_reviews` on `get_pull_request_detail`**: new optional flag
@@ -19,7 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Resilient `gh` CLI calls**: `GHCLIClient.run` now retries
   `CLITimeoutError` and transient `CLIError`s (rate limit, HTTP 429/5xx,
   connection faults) with `retry_delay_seconds` backoff, up to
-  `retry_attempts` extra tries (default raised 1 → 2). Default
+  `retry_attempts` extra tries (default raised 1 → 2) — restricted to
+  read-only commands so a timed-out mutation is never replayed (the error
+  is flagged `retryable: false` instead). Default
   `timeout_seconds` raised 10 → 30 after observing systematic 10-second
   timeouts on `/files` and `/reviews` endpoints of large repos. (#145)
 
