@@ -1,0 +1,149 @@
+---
+# Release Automation
+# Runs after a merge reaches main. It resolves the merged pull request,
+# derives the semver bump (explicit release labels first, Conventional Commits
+# as fallback), moves CHANGELOG.md [Unreleased] content into a professional
+# release section, updates the code version, commits and tags that preparation
+# on main, then dispatches release.yaml to build and publish GHCR images plus
+# the GitHub release. Direct pushes without an associated merged PR are
+# skipped. Before committing, the job rebases its generated release commit on
+# the latest origin/main and recomputes it, so queued merges do not reuse a
+# stale version after another automation run finishes first.
+name: Release Automation
+run-name: 'Release automation — ${{ github.sha }}'
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-automation-main
+  cancel-in-progress: false
+
+jobs:
+  prepare-and-dispatch:
+    name: Prepare release and dispatch publisher
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # The release commit is pushed by GITHUB_TOKEN and therefore does not
+    # normally retrigger push workflows. This guard is defense in depth if
+    # repository token behavior or a custom token ever changes.
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(release):') }}
+    permissions:
+      contents: write  # release commit and immutable tag on main
+      actions: write   # dispatch release.yaml
+    env:
+      KIND: python
+      VERSION_FILE: core/version.py
+      IMAGE: ghcr.io/${{ github.repository }}
+    steps:
+      - name: Check out main with tags
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+
+      - name: Prepare, commit and tag release
+        id: prepare
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          output_file="$RUNNER_TEMP/release-outputs"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          pushed=0
+          for attempt in 1 2 3; do
+            git fetch origin main
+            git fetch origin --tags
+            if git log --format=%s "${GITHUB_SHA}..origin/main" | grep -q "^chore(release):"; then
+              echo "skip=true" > "$output_file"
+              echo "reason=already included in a newer automated release" >> "$output_file"
+              cat "$output_file" >> "$GITHUB_OUTPUT"
+              echo "Release skipped: this merge is already contained in a newer automated release commit."
+              exit 0
+            fi
+            git reset --hard origin/main
+            : > "$output_file"
+            python3 scripts/automated_release.py prepare \
+              --repo "${{ github.repository }}" \
+              --sha "$GITHUB_SHA" \
+              --kind "$KIND" \
+              --image "$IMAGE" \
+              --github-output "$output_file"
+
+            if grep -q '^skip=true$' "$output_file"; then
+              cat "$output_file" >> "$GITHUB_OUTPUT"
+              echo 'Release intentionally skipped; no artifact will be published.'
+              exit 0
+            fi
+
+            git add CHANGELOG.md "$VERSION_FILE"
+            if git diff --cached --quiet; then
+              echo '::error::release preparation produced no file changes'
+              exit 1
+            fi
+            tag="$(awk -F= '$1 == "tag" { print $2 }' "$output_file" | tail -1)"
+            git commit -m "chore(release): ${tag}"
+            if git push origin HEAD:main; then
+              pushed=1
+              break
+            fi
+            echo "main advanced while preparing the release; recomputing (attempt ${attempt})"
+            sleep 3
+          done
+
+          if [ "$pushed" -ne 1 ]; then
+            echo '::error::could not push the release commit after retrying with current main'
+            exit 1
+          fi
+
+          cat "$output_file" >> "$GITHUB_OUTPUT"
+          release_sha="$(git rev-parse HEAD)"
+          tag="$(awk -F= '$1 == "tag" { print $2 }' "$output_file" | tail -1)"
+          git tag -a "$tag" -m "$tag"
+          git push origin "refs/tags/${tag}"
+          echo "release_sha=${release_sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Report skipped release
+        if: steps.prepare.outputs.skip == 'true'
+        run: echo 'No release artifact is published for this push.'
+
+      - name: Dispatch release publisher
+        if: steps.prepare.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.prepare.outputs.tag }}
+          RELEASE_SHA: ${{ steps.prepare.outputs.release_sha }}
+        run: |
+          set -euo pipefail
+          dispatched=0
+          for attempt in 1 2 3; do
+            if gh workflow run release.yaml -f tag="$TAG" -f ref="$RELEASE_SHA"; then
+              dispatched=1
+              break
+            fi
+            echo "workflow dispatch attempt ${attempt} failed; retrying"
+            sleep 5
+          done
+          if [ "$dispatched" -ne 1 ]; then
+            echo '::error::release commit/tag were pushed, but release.yaml could not be dispatched'
+            echo "Recover manually with: gh workflow run release.yaml -f tag=${TAG} -f ref=${RELEASE_SHA}"
+            exit 1
+          fi
+          echo "Dispatched release.yaml for ${TAG} at ${RELEASE_SHA}."
+
+      - name: Automation summary
+        if: steps.prepare.outputs.skip == 'false'
+        run: |
+          {
+            echo '## Automated release prepared'
+            echo
+            echo "- Tag: \`${{ steps.prepare.outputs.tag }}\`"
+            echo "- Bump: \`${{ steps.prepare.outputs.bump }}\`"
+            echo "- Pull request: \`#${{ steps.prepare.outputs.pr_number }}\`"
+            echo '- Publisher: `release.yaml` was dispatched after the tag was pushed.'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -386,7 +386,7 @@ through [SECURITY.md](SECURITY.md).
 | [docs/GRAPHQL_REFERENCE.md](docs/GRAPHQL_REFERENCE.md) | GraphQL queries/mutations used internally |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common errors and fixes |
 | [docs/HARDENING_200.md](docs/HARDENING_200.md) | Runtime hardening register |
-| [docs/RELEASING.md](docs/RELEASING.md) | Versioning, the release workflow and the GHCR image |
+| [docs/RELEASING.md](docs/RELEASING.md) | Automated versioning, releases, tags and the GHCR image |
 
 
 ---

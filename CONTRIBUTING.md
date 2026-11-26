@@ -76,6 +76,7 @@ Import shared infrastructure from the **canonical** paths (`core.*`, `clients.*`
 - Docker image builds successfully
 - New tools have at least one test
 - Every required GitHub Actions check has completed successfully before the PR is presented as ready; pending, failed, or missing checks block delivery
+- Do not manually bump `core/version.py` or create release tags. After merge, `.github/workflows/release-automation.yaml` versions, tags, and publishes automatically; use `release:none` only when the PR must not publish artifacts. See [docs/RELEASING.md](docs/RELEASING.md)
 
 ## Code Style
 

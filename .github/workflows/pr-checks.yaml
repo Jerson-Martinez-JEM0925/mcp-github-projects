@@ -54,6 +54,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: automated release unit tests
+        run: python3 -m unittest scripts/test_automated_release.py
+
       - name: Run yamllint
         run: |
           pipx install yamllint || pip install --user yamllint
