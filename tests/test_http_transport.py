@@ -22,6 +22,7 @@ def _configure_target(monkeypatch: pytest.MonkeyPatch, **extra: str) -> None:
     monkeypatch.setenv("GH_PROJECT_ORG_NAME", "ExampleOrg")
     monkeypatch.setenv("GH_PROJECT_REPO_NAME", "ExampleRepo")
     monkeypatch.setenv("GH_PROJECT_PROJECT_NUMBER", "1")
+    monkeypatch.setenv("GH_PROJECT_OWNER_TYPE", "organization")
     monkeypatch.delenv("MCP_TRANSPORT", raising=False)
     for key, value in extra.items():
         monkeypatch.setenv(key, value)
@@ -59,7 +60,11 @@ def test_stdio_main_remains_the_default(monkeypatch: pytest.MonkeyPatch) -> None
 
 def test_http_app_health_and_mcp_protocol(monkeypatch: pytest.MonkeyPatch) -> None:
     """Health probes and initialize/tools/list work over stateless HTTP."""
-    _configure_target(monkeypatch, MCP_TRANSPORT="streamable-http")
+    _configure_target(
+        monkeypatch,
+        MCP_TRANSPORT="streamable-http",
+        MCP_HTTP_VALIDATE_TOKENS="false",
+    )
     server = importlib.import_module("server")
     server = importlib.reload(server)
     app = server.create_http_app()

@@ -3,18 +3,21 @@
 [![CI](https://github.com/jersonmartinez/mcp-github-projects/actions/workflows/ci.yaml/badge.svg)](https://github.com/jersonmartinez/mcp-github-projects/actions/workflows/ci.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
-[![FastMCP](https://img.shields.io/badge/FastMCP-3.x-6E4AFF.svg)](https://github.com/jlowin/fastmcp)
+[![FastMCP](https://img.shields.io/badge/FastMCP-4.x-6E4AFF.svg)](https://github.com/jlowin/fastmcp)
 [![Docker](https://img.shields.io/badge/docker-first-2496ED.svg?logo=docker&logoColor=white)](Dockerfile)
 
 A Model Context Protocol (MCP) server that lets AI assistants and agents manage
 **GitHub Projects V2** boards programmatically — issues, fields, milestones,
-labels, sub-issues, and full sprint/planning workflows. Built with **Python 3.12**
-and **FastMCP 3.x**, it speaks stdio JSON-RPC or optional stateless Streamable HTTP
-and runs entirely inside a **standalone Docker container** — no host toolchain
-required beyond Docker.
+labels, sub-issues, pull requests, GitHub Actions, repository content, and full
+sprint/planning workflows. Built with **Python 3.12** and **FastMCP 4.x**, it
+speaks stdio JSON-RPC or optional stateless Streamable HTTP and runs entirely
+inside a **standalone Docker container** — no host toolchain required beyond Docker.
 
-The server exposes **151 tools**: operational primitives, CI integration,
-repository/project quality reports, and higher-level planning capabilities.
+The server exposes **177 tools at `MCP_ACCESS_LEVEL=full`**: operational
+primitives, CI/DevOps integration, repository/project quality reports, and
+higher-level planning capabilities. Role profiles can deliberately narrow that
+catalog for developers, DevOps operators, project managers, commenters, or
+read-only users.
 
 ---
 
@@ -25,7 +28,7 @@ repository/project quality reports, and higher-level planning capabilities.
   strategic planning.
 - **GitHub Projects V2 native** — GraphQL v4 for field/board mutations, REST/`gh`
   for issue CRUD, with automatic delegation to the right API per operation.
-- **Organization and user projects** via a single `GH_PROJECT_OWNER_TYPE` switch.
+- **Organization and user projects** with `GH_PROJECT_OWNER_TYPE=auto` runtime detection (explicit `organization`/`user` remains available).
 - **Multiple Project V2 boards per organization** — keep one default board and
   allow additional boards through `GH_PROJECT_PROJECT_NUMBERS`; board tools
   accept an explicit `project_number` selector with isolated metadata caches.
@@ -33,6 +36,15 @@ repository/project quality reports, and higher-level planning capabilities.
   even registered: `read` exposes read-only tools, `write` (default) adds
   create/update/close/archive, `full` also exposes permanent-delete tools (each
   gated behind `confirm:true`). See [docs/CAPABILITIES.md](docs/CAPABILITIES.md).
+- **Role-based profiles** — `MCP_TOOL_PROFILE=full|developer|devops|project_manager|read_only|commenter`
+  narrows the catalog by capability without weakening the access-level boundary.
+- **Performance-oriented GitHub transport** — pooled GraphQL/REST connections,
+  credential-isolated keep-alive, bounded retries with transient-error/backoff
+  handling, compact project-item projections, and bounded concurrency in bulk
+  operations. High-frequency issue/label commands and the common non-interactive
+  `gh api` subset use a direct REST fast path while preserving the
+  `gh`-compatible contract; output-shaping or less common operations keep the
+  CLI fallback.
 - **Scope lock** — `GH_PROJECT_SCOPE_LOCK=true` fences every tool to the
   configured org/repo/project; foreign targets are refused before any mutation.
 - **Docker-first** — one image, zero host dependencies, launched on demand by the
@@ -43,7 +55,15 @@ repository/project quality reports, and higher-level planning capabilities.
 - **Least-privilege ready** — every tool maps to a documented capability
   ([docs/CAPABILITIES.md](docs/CAPABILITIES.md)) so you can scope tokens tightly.
 - **Hardened runtime** — bounded timeouts/retries, atomic owner-only metadata
-  cache, target-namespaced isolation, and token redaction in all diagnostics.
+  cache, target-namespaced isolation, HTTP body/rate limits, cached bearer
+  validation by fingerprint, and token redaction in all diagnostics.
+- **Supply-chain and quality gates** — pinned transitive Python constraints,
+  checksum-verified `gh` installation, Ruff correctness lint, focused mypy,
+  Bandit, pip-audit, critical-container scanning, contract tests, schema-digest drift detection and secret
+  scanning in CI.
+- **Operational observability** — correlation IDs in error envelopes and logs,
+  optional JSON logging, per-tool latency records at `MCP_LOG_LEVEL=DEBUG`, and
+  opt-in OpenTelemetry spans containing only metadata (never arguments or secrets).
 - **Response-quality diagnostics** — bounded repository health, issue/PR lifecycle, CI conclusions, metadata consistency, closure readiness, pagination, and safe target diagnostics for automation workers.
 - **Multiple scoped instances** — connect to several repositories/projects at
   once with distinct MCP server names and a scope lock per target. For several
@@ -84,7 +104,7 @@ GH_PROJECT_ORG_NAME=my-org          # organization login or username
 GH_PROJECT_REPO_NAME=my-repo        # repository within the owner
 GH_PROJECT_PROJECT_NUMBER=1         # default Project V2 number
 GH_PROJECT_PROJECT_NUMBERS=1,2      # optional additional boards
-GH_PROJECT_OWNER_TYPE=organization  # 'organization' or 'user'
+GH_PROJECT_OWNER_TYPE=auto          # auto-detects organization/user
 ```
 
 Token requirements:
@@ -153,7 +173,7 @@ in the JSON.
 
 ## Tool Catalog
 
-The server registers **130 tools** at `MCP_ACCESS_LEVEL=full` (fewer at `read`/`write`). A category overview — the generated, per-tool catalog is [docs/TOOLS.md](docs/TOOLS.md):
+The server registers **177 tools** at `MCP_ACCESS_LEVEL=full` and `MCP_TOOL_PROFILE=full` (fewer at lower access levels or narrower role profiles). A category overview — the generated, per-tool catalog is [docs/TOOLS.md](docs/TOOLS.md):
 
 | Category | What it covers | Representative tools |
 |----------|----------------|----------------------|
@@ -165,17 +185,18 @@ The server registers **130 tools** at `MCP_ACCESS_LEVEL=full` (fewer at `read`/`
 | **Repository provisioning** | Create a user or organization repository with explicit visibility | `create_repository` |
 | **Planning & Workflows** | Sprints, standups, epics, triage, releases | `sprint_planning`, `create_epic`, `close_sprint`, `daily_standup`, `sprint_review`, `triage_new_issues`, `escalate_overdue`, `generate_release_notes`, `complete_issue` |
 | **PR ↔ Issue lifecycle** | Verify acceptance, link PRs, gate closures | `verify_acceptance_criteria`, `get_pr_linked_issues`, `validate_issue_closure_readiness`, `close_issue_on_pr_merge` |
-| **CI / GitHub Actions** | Read PR checks, merge a ready PR, inspect runs, re-run or dispatch workflows | `get_pr_checks`, `merge_pull_request`, `list_workflows`, `list_workflow_runs`, `get_workflow_run`, `get_job_logs`, `rerun_workflow_run`, `dispatch_workflow` |
+| **CI / GitHub Actions & releases** | Read PR checks, merge a ready PR, inspect/cancel/rerun workflows, manage artifacts, environments, deployments and releases | `get_pr_checks`, `merge_pull_request`, `cancel_workflow_run`, `list_workflow_artifacts`, `list_environments`, `create_deployment`, `create_release`, `dispatch_workflow` |
 | **Metrics** | Board and sprint statistics | `get_project_stats`, `get_sprint_summary` |
 | **Diagnostics** | Report effective access level, scope lock, and target | `server_info` |
 | **Board structure** | Plan/apply Status (single-select) options without losing item values; list/create views | `set_field_options`, `list_project_views`, `create_project_view` |
 | **Permanent delete** *(access level `full`, each needs `confirm:true`)* | Irreversible removals | `delete_project_item`, `delete_issue`, `delete_issue_comment`, `delete_label`, `delete_milestone` |
-| **Extended capability suite (~60)** | Reporting, roadmaps, changelogs, backlog ranking, risk registers, retrospectives | `project_health_report`, `project_export_markdown`, `plan_next_sprint`, `prioritize_backlog`, `generate_risk_register`, `build_roadmap_markdown`, `build_sprint_retrospective` |
+| **Extended capability suite (62)** | Reporting, roadmaps, changelogs, backlog ranking, risk registers, retrospectives, issue bundles and automation decisions | `project_health_report`, `project_export_markdown`, `plan_next_sprint`, `prioritize_backlog`, `generate_risk_register`, `build_roadmap_markdown`, `build_sprint_retrospective`, `build_issue_bundle`, `build_automation_decision` |
 
-Tools that could perform broad mutations return a `dry_run` plan by default. The
-capability suite asserts its 60 unique additions at import time, CI verifies the
-registered-tool count stays at 100+, and `tests/test_tool_docs.py` fails when
-docs/TOOLS.md drifts from the registry or any tool lacks a description.
+Tools that could perform broad mutations return a `dry_run` plan when supported.
+The capability suite asserts its 62 unique additions at import time, CI verifies
+the registered-tool count stays at 100+, contract tests freeze the public schema
+digest, and `tests/test_tool_docs.py` fails when docs/TOOLS.md drifts from the
+registry or any tool lacks a description.
 
 Full input/output reference: [docs/USAGE.md](docs/USAGE.md) ·
 Parameter reference: [docs/PARAMETERS.md](docs/PARAMETERS.md) ·
@@ -201,7 +222,7 @@ tools/             MCP tool definitions (thin, declarative, dry_run-aware)
 services/          Business logic & orchestration (project / issue / field / discovery)
         │
         ▼
-clients/           GraphQL client + gh CLI client + metadata cache
+clients/           pooled GraphQL client + direct REST fast path + gh fallback + caches
         │
         ▼
 graphql/           Query & mutation strings for the GitHub GraphQL v4 API
@@ -210,17 +231,29 @@ graphql/           Query & mutation strings for the GitHub GraphQL v4 API
 GitHub APIs        GraphQL v4 (fields, board, sub-issues) + REST v3 (issue CRUD)
 ```
 
-Supporting modules at the root: `config.py` (validated Pydantic settings),
-`auth.py` (token resolution + scope checks), `capabilities.py` (tool → permission
-map), `profiles.py` (multi-target profiles), `hardening.py` and `error_handling.py`
-(runtime safety), `models/` (Pydantic response/context models).
+Supporting modules live under `core/` (validated settings, authentication,
+access levels, capability profiles, HTTP hardening and runtime safety). The
+legacy root-level `config.py`, `auth.py`, `capabilities.py`, `profiles.py`,
+`hardening.py` and `error_handling.py` files remain thin compatibility shims.
+`models/` contains Pydantic response/context/item models.
 
 ### API delegation
 
 | Operation kind | Backend used |
 |----------------|--------------|
-| Issue CRUD, comments, project item-add, close | `gh` CLI |
-| Field updates, archival, discovery, sub-issues | Custom GraphQL v4 |
+| High-frequency issue/label reads and common `gh api` request shapes | Pooled direct REST fast path |
+| Less common REST operations and CLI-specific output shaping | `gh` CLI fallback |
+| Field updates, archival, discovery, sub-issues | Pooled custom GraphQL v4 |
+
+### Supply-chain controls
+
+The runtime image is built from a digest-pinned `python:3.12-slim` base and a
+version- and checksum-verified GitHub CLI release. Python dependencies are
+installed only from generated `requirements-runtime.lock` /
+`requirements-dev.lock` files with pip hash checking; direct requirements stay
+short and reviewable in `requirements*.txt`, while the locks pin the complete
+transitive tree. Regenerate them with `make lock` after intentionally changing
+dependencies. CI also runs Ruff, mypy, Bandit, pip-audit and a critical-severity Trivy image scan.
 
 ---
 
@@ -237,14 +270,17 @@ without them.
 | `GH_PROJECT_ORG_NAME` | **yes** | — | Owner: organization login or username |
 | `GH_PROJECT_REPO_NAME` | **yes** | — | Repository within the owner |
 | `GH_PROJECT_PROJECT_NUMBER` | **yes** | — | Project V2 number (1–100000) |
-| `GH_PROJECT_OWNER_TYPE` | — | `organization` | `organization` or `user` |
+| `GH_PROJECT_OWNER_TYPE` | — | `auto` | `auto`, `organization` or `user` |
 | `MCP_ACCESS_LEVEL` | — | `write` | Which tools are exposed: `read`, `write`, or `full`. **Note: MCP_-prefixed, not GH_PROJECT_.** |
+| `MCP_TOOL_PROFILE` | — | `full` | Role catalog: `full`, `developer`, `devops`, `project_manager`, `read_only`, `commenter` |
 | `GH_PROJECT_SCOPE_LOCK` | — | `false` | Confine every tool to the configured org/repo/project |
 | `GH_PROJECT_PROFILE` | — | — | Load `profiles/<name>.env` instead of root `.env` |
-| `GH_PROJECT_TIMEOUT_SECONDS` | — | `10` | Per-call timeout (1–120) |
-| `GH_PROJECT_RETRY_ATTEMPTS` | — | `1` | Read retries (0–5; mutations never retry) |
+| `GH_PROJECT_TIMEOUT_SECONDS` | — | `30` | Per-call timeout (1–120) |
+| `GH_PROJECT_RETRY_ATTEMPTS` | — | `2` | Read retries (0–5; mutations never retry) |
 | `GH_PROJECT_CACHE_TTL_HOURS` | — | `24` | Metadata cache TTL (1–720) |
 | `GH_PROJECT_MAX_ITEMS` | — | `200` | Max items per list/query (1–1000) |
+| `GH_PROJECT_MAX_CONCURRENT_REQUESTS` | — | `5` | Bounded concurrency inside bulk/update tools (1–20) |
+| `GH_PROJECT_RESOURCE_CACHE_TTL_SECONDS` | — | `300` | Stable labels/milestones/workflow metadata cache TTL; zero disables |
 | `GH_PROJECT_PAGE_SIZE` | — | `100` | Page size (1–100) |
 
 ¹ Token resolution order: `GITHUB_TOKEN` → `GH_TOKEN` → `gh auth token`.

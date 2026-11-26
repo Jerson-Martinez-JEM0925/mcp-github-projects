@@ -255,3 +255,30 @@ identifier needed for reconciliation.
    the existing head branch using the observed branch head SHA when available.
 4. If it does not exist, retry only after confirming that the provider did not
    apply the original mutation.
+
+## Streamable HTTP returns 401 before initialize
+
+**Cause:** in request-auth mode the bearer is checked before MCP metadata is exposed. In addition to client-key and prefix checks, `MCP_HTTP_VALIDATE_TOKENS=true` validates the token against GitHub (`GET /user`) and caches only the token fingerprint and verdict.
+
+**Resolution:**
+1. Verify the token format is allowed by `MCP_ALLOWED_TOKEN_PREFIXES`.
+2. Verify `X-MCP-Client-Key` when `MCP_CLIENT_KEY` is configured.
+3. Confirm the token is active in GitHub and has not expired or been revoked.
+4. If GitHub or the network was temporarily unavailable, retry after the short negative-validation cache window.
+5. Do not disable validation for a remote/shared deployment; `MCP_HTTP_VALIDATE_TOKENS=false` is intended for controlled local tests.
+
+## Streamable HTTP returns 413 or 429
+
+`413 payload_too_large` means the request body exceeded `MCP_HTTP_MAX_BODY_BYTES`. `429 rate_limited` means the fixed per-minute budget in `MCP_HTTP_RATE_LIMIT_PER_MINUTE` was exhausted for that token fingerprint or remote address. Batch work through bulk tools instead of many MCP calls, and raise limits only after sizing the reverse proxy and GitHub rate-limit budget.
+
+## Bulk operations are fast but hit secondary rate limits
+
+Bulk tools bounded concurrency defaults to `GH_PROJECT_MAX_CONCURRENT_REQUESTS=5`. Lower it when GitHub returns secondary-rate errors; raise it cautiously for trusted tokens and small repositories. Retries are applied only to operations classified as reads; mutations are never replayed automatically because a timed-out mutation may already have been applied.
+
+## Stable labels, milestones or workflow definitions look stale
+
+These resource lists use a short process-local cache (`GH_PROJECT_RESOURCE_CACHE_TTL_SECONDS`, default 300s) because they change rarely and are read frequently. MCP mutation tools invalidate the affected resource kind immediately. External changes made directly in GitHub become visible after the TTL; set the TTL to `0` to disable the cache.
+
+## Startup takes several seconds
+
+The default stdio startup validates env credentials and primes owner-type detection before accepting MCP traffic. Keep `GH_PROJECT_VALIDATE_AUTH_ON_STARTUP=true` for fail-fast correctness. If a controlled embedding needs faster cold start, set it to `false`; individual tools still fail cleanly if credentials are invalid. Long-lived MCP sessions avoid repeated cold-start cost.

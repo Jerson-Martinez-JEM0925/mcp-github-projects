@@ -89,7 +89,7 @@ _ITEMS_FRAGMENT: str = """
             ... on Issue {
               number
               title
-              body
+              body @include(if: $includeBody)
               url
               state
               assignees(first: 100) {
@@ -106,7 +106,7 @@ _ITEMS_FRAGMENT: str = """
             ... on PullRequest {
               number
               title
-              body
+              body @include(if: $includeBody)
               url
               state
               assignees(first: 100) {
@@ -122,7 +122,7 @@ _ITEMS_FRAGMENT: str = """
             }
             ... on DraftIssue {
               title
-              body
+              body @include(if: $includeBody)
             }
             __typename
           }
@@ -185,7 +185,7 @@ _ITEMS_FRAGMENT: str = """
 """
 
 LIST_ITEMS_QUERY_ORG: str = (
-    "query ListProjectItems($org: String!, $number: Int!, $first: Int!, $after: String) {\n"
+    "query ListProjectItems($org: String!, $number: Int!, $first: Int!, $after: String, $includeBody: Boolean!) {\n"
     "  organization(login: $org) {\n"
     "    projectV2(number: $number) {\n"
     f"{_ITEMS_FRAGMENT}"
@@ -195,7 +195,7 @@ LIST_ITEMS_QUERY_ORG: str = (
 )
 
 LIST_ITEMS_QUERY_USER: str = (
-    "query ListProjectItems($login: String!, $number: Int!, $first: Int!, $after: String) {\n"
+    "query ListProjectItems($login: String!, $number: Int!, $first: Int!, $after: String, $includeBody: Boolean!) {\n"
     "  user(login: $login) {\n"
     "    projectV2(number: $number) {\n"
     f"{_ITEMS_FRAGMENT}"

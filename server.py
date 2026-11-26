@@ -12,8 +12,10 @@ Usage (the container's default command):
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import sys
+from datetime import datetime, timezone
 
 import uvicorn
 from fastmcp import FastMCP
@@ -27,8 +29,10 @@ from core.arguments import accept_flat_or_wrapped
 from core.auth import resolve_token, validate_scopes
 from core.access import AccessLevel, ToolAccess, classify, is_exposed
 from core.config import get_settings, load_settings_or_exit
+from core.capabilities import PROFILES, validate_capabilities
 from core.context import RequestContextFilter, with_request_context
 from core.http_auth import RequestBearerAuthMiddleware
+from core.observability import configure_observability
 from core.version import VERSION
 from tools.projects.archive import (
     archive_project_item,
@@ -192,6 +196,11 @@ def create_http_app() -> Starlette:
             protected_path=settings.http_path,
             client_key=settings.client_key,
             allowed_prefixes=settings.token_prefixes(),
+            max_body_bytes=settings.http_max_body_bytes,
+            rate_limit_per_minute=settings.http_rate_limit_per_minute,
+            validate_tokens=settings.http_validate_tokens,
+            auth_cache_ttl_seconds=settings.http_auth_cache_ttl_seconds,
+            owner_login=settings.org_name if settings.owner_type == "auto" else "",
         )
     app.routes.insert(0, Route("/readyz", endpoint=_readyz, methods=["GET"]))
     app.routes.insert(0, Route("/healthz", endpoint=_healthz, methods=["GET"]))
@@ -319,7 +328,7 @@ _ALL_TOOLS.extend(REPOSITORY_CONTENT_TOOLS)
 _ALL_TOOLS.extend(PULL_REQUEST_LISTING_TOOLS)
 _ALL_TOOLS.extend(PULL_REQUEST_REVIEW_TOOLS)
 
-# Extend with the 60-tool capability suite (dynamically-defined functions).
+# Extend with the 62-tool capability suite (dynamically-defined functions).
 _ALL_TOOLS.extend(
     getattr(capability_suite, _name) for _name in capability_suite.CAPABILITY_TOOL_NAMES
 )
@@ -332,8 +341,10 @@ def _register_tools() -> dict[str, int]:
     ``complete_issue_workflow`` registers under its MCP name ``complete_issue``,
     which is how it is classified in core.access.
     """
-    level = AccessLevel.parse(get_settings().access_level)
-    allowlist = get_settings().write_tool_allowlist_names()
+    settings = get_settings()
+    level = AccessLevel.parse(settings.access_level)
+    allowlist = settings.write_tool_allowlist_names()
+    profile_capabilities = PROFILES[settings.tool_profile]
     known = {_tool_name(fn) for fn in _ALL_TOOLS}
     unknown = sorted(allowlist - known)
     if unknown:
@@ -342,7 +353,12 @@ def _register_tools() -> dict[str, int]:
     hidden = 0
     for _fn in _ALL_TOOLS:
         tool_name = _tool_name(_fn)
-        if is_exposed(tool_name, level) and _allowed_by_write_allowlist(tool_name, allowlist):
+        profile_allowed, _missing = validate_capabilities(tool_name, profile_capabilities)
+        if (
+            is_exposed(tool_name, level)
+            and profile_allowed
+            and _allowed_by_write_allowlist(tool_name, allowlist)
+        ):
             # Each call runs in its own RequestContext (correlation ID in logs
             # and error envelopes), and accepts flat args or a legacy
             # {"params": {...}} wrapper on every tool (#4).
@@ -350,7 +366,12 @@ def _register_tools() -> dict[str, int]:
             registered += 1
         else:
             hidden += 1
-    return {"level": level.value, "registered": registered, "hidden": hidden}
+    return {
+        "level": level.value,
+        "profile": settings.tool_profile,
+        "registered": registered,
+        "hidden": hidden,
+    }
 
 
 def _tool_name(fn) -> str:
@@ -371,7 +392,7 @@ def _build_tool(fn, tool_name: str) -> FunctionTool:
     original = FunctionTool.from_function(fn, name=tool_name)
     normalized, schema = accept_flat_or_wrapped(fn, original.parameters, tool_name)
     tool = FunctionTool.from_function(
-        with_request_context(normalized, tool_name),
+        with_request_context(normalized, tool_name, classify(tool_name).value),
         name=tool_name,
         description=original.description,
     )
@@ -405,6 +426,13 @@ async def _validate_auth_on_startup() -> None:
             resolve_token(),
             timeout=timeout,
         )
+        if settings.owner_type == "auto":
+            from services.owner_type_resolver import prime_owner_type_cache
+
+            await asyncio.wait_for(
+                prime_owner_type_cache(settings.org_name, token),
+                timeout=timeout,
+            )
         # Skip scope validation for fine-grained PATs (github_pat_*)
         # They don't support X-OAuth-Scopes header but still have permissions
         if not token.startswith("github_pat_"):
@@ -435,6 +463,7 @@ async def _validate_auth_on_startup() -> None:
         "github-project-management MCP server ready. "
         "Authentication validated successfully. "
         f"Access level: {_REGISTRATION['level']} "
+        f"Profile: {_REGISTRATION['profile']} "
         f"({_REGISTRATION['registered']} tools registered, "
         f"{_REGISTRATION['hidden']} hidden). "
         f"Scope lock: {'on' if get_settings().scope_lock else 'off'}.",
@@ -445,17 +474,40 @@ async def _validate_auth_on_startup() -> None:
 # ── Main Entry Point ─────────────────────────────────────────────────────────
 
 
+class _JsonLogFormatter(logging.Formatter):
+    """Small dependency-free JSON formatter for operational MCP logs."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        """Render one JSON object per log record, without secrets or token state."""
+        payload = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+            "correlation_id": getattr(record, "correlation_id", "-"),
+            "tool": getattr(record, "tool", "-"),
+        }
+        if record.exc_info:
+            payload["exception"] = self.formatException(record.exc_info)
+        return json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+
+
 def _configure_logging() -> None:
     """Send logs to stderr (stdout is the MCP protocol), tagged per request."""
+    settings = get_settings()
     handler = logging.StreamHandler(sys.stderr)
     handler.addFilter(RequestContextFilter())
-    handler.setFormatter(
-        logging.Formatter("%(levelname)s [%(correlation_id)s %(tool)s] %(name)s: %(message)s")
-    )
+    if settings.log_format == "json":
+        handler.setFormatter(_JsonLogFormatter())
+    else:
+        handler.setFormatter(
+            logging.Formatter("%(levelname)s [%(correlation_id)s %(tool)s] %(name)s: %(message)s")
+        )
     root = logging.getLogger()
     root.addHandler(handler)
-    if root.level == logging.NOTSET or root.level > logging.WARNING:
-        root.setLevel(logging.WARNING)
+    level = getattr(logging, settings.log_level, logging.WARNING)
+    if root.level == logging.NOTSET or root.level > level:
+        root.setLevel(level)
 
 
 def main() -> None:
@@ -466,7 +518,8 @@ def main() -> None:
     """
     _configure_logging()
     settings = get_settings()
-    if settings.auth_mode == "env":
+    configure_observability(settings)
+    if settings.auth_mode == "env" and settings.validate_auth_on_startup:
         asyncio.run(_validate_auth_on_startup())
     if settings.transport == "stdio":
         mcp.run(transport="stdio")

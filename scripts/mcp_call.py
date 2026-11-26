@@ -40,8 +40,10 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 # Server entrypoint lives at the repository root, one level up from scripts/.
@@ -63,21 +65,41 @@ def _resolve_token() -> str:
     return token
 
 
-def _readline_json(proc: subprocess.Popen[str]) -> dict | None:
-    """Read stdout lines until one parses as JSON; skip log noise."""
-    assert proc.stdout is not None
-    while True:
-        line = proc.stdout.readline()
-        if not line:
-            return None
-        line = line.strip()
-        if not line:
-            continue
+class _JsonLineReader:
+    """Read JSON lines from a pipe with a timeout, skipping log noise."""
+
+    def __init__(self, stream) -> None:
+        self._queue: queue.Queue[dict | None] = queue.Queue()
+
+        def consume() -> None:
+            try:
+                for line in stream:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        parsed = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(parsed, dict):
+                        self._queue.put(parsed)
+            finally:
+                self._queue.put(None)
+
+        self._thread = threading.Thread(target=consume, daemon=True)
+        self._thread.start()
+
+    def read(self, timeout: float = 30.0) -> dict | None:
+        """Return the next JSON object, or None on EOF/timeout."""
         try:
-            return json.loads(line)
-        except json.JSONDecodeError:
-            # Non-JSON line (e.g. a startup log). Ignore and keep reading.
-            continue
+            return self._queue.get(timeout=timeout)
+        except queue.Empty:
+            return None
+
+
+def _readline_json(reader: _JsonLineReader, timeout: float = 30.0) -> dict | None:
+    """Compatibility wrapper around the bounded JSON-line reader."""
+    return reader.read(timeout=timeout)
 
 
 def call(tool: str, arguments: dict, *, flat: bool) -> dict | None:
@@ -102,6 +124,8 @@ def call(tool: str, arguments: dict, *, flat: bool) -> dict | None:
         proc.stdin.write(json.dumps(obj) + "\n")
         proc.stdin.flush()
 
+    assert proc.stdout is not None
+    reader = _JsonLineReader(proc.stdout)
     try:
         send({
             "jsonrpc": "2.0",
@@ -113,7 +137,9 @@ def call(tool: str, arguments: dict, *, flat: bool) -> dict | None:
                 "clientInfo": {"name": "mcp_call", "version": "1"},
             },
         })
-        _readline_json(proc)  # initialize result
+        initialize_response = _readline_json(reader)
+        if initialize_response is None:
+            return None
         send({"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}})
 
         payload = arguments if flat else {"params": arguments}
@@ -123,7 +149,7 @@ def call(tool: str, arguments: dict, *, flat: bool) -> dict | None:
             "method": "tools/call",
             "params": {"name": tool, "arguments": payload},
         })
-        response = _readline_json(proc)
+        response = _readline_json(reader, timeout=120.0)
     finally:
         if proc.stdin is not None:
             proc.stdin.close()
@@ -154,6 +180,27 @@ def _parse_args(argv: list[str]) -> tuple[str, dict, bool, bool]:
     return tool, arguments, flat, raw
 
 
+def _tool_result_failed(result: dict) -> bool:
+    """Return true for protocol errors or application-level ok=false envelopes."""
+    if result.get("isError"):
+        return True
+    structured = result.get("structuredContent")
+    if isinstance(structured, dict) and structured.get("ok") is False:
+        return True
+    content = result.get("content")
+    if isinstance(content, list):
+        for part in content:
+            if not isinstance(part, dict) or not isinstance(part.get("text"), str):
+                continue
+            try:
+                payload = json.loads(part["text"])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(payload, dict) and payload.get("ok") is False:
+                return True
+    return False
+
+
 def main(argv: list[str]) -> int:
     tool, arguments, flat, raw = _parse_args(argv)
     response = call(tool, arguments, flat=flat)
@@ -161,18 +208,18 @@ def main(argv: list[str]) -> int:
         sys.stderr.write("error: no response from server (check token/context env).\n")
         return 1
 
+    result = response.get("result")
     if raw:
         print(json.dumps(response, indent=2, ensure_ascii=False))
-        return 0
+        return 1 if result is None or _tool_result_failed(result) else 0
 
-    result = response.get("result")
     if result is None:
         # JSON-RPC error envelope.
         print(json.dumps(response, indent=2, ensure_ascii=False))
         return 1
 
     print(json.dumps(result, indent=2, ensure_ascii=False))
-    return 1 if result.get("isError") else 0
+    return 1 if _tool_result_failed(result) else 0
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ Exposes tools for closing multiple issues at once and searching issues.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Literal, Optional
@@ -15,6 +16,7 @@ from core.access import resolve_repository
 from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
 from core.factory import get_service_factory
+from core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -34,11 +36,19 @@ class BulkCloseIssuesInput(_RepoTarget):
     """Input schema for the bulk_close_issues tool."""
 
     issue_numbers: list[int] = Field(
+        min_length=1,
         max_length=50,
         description="List of issue numbers to close (maximum 50)",
     )
-    reason: str = Field(default="completed", description="Close reason: 'completed' or 'not_planned'")
+    reason: Literal["completed", "not_planned"] = Field(
+        default="completed",
+        description="Close reason: 'completed' or 'not_planned'",
+    )
     comment: Optional[str] = Field(default=None, description="Optional comment to add before closing each issue")
+    dry_run: bool = Field(
+        default=False,
+        description="Preview the operations without commenting or closing any issue",
+    )
 
 
 class SearchIssuesInput(_RepoTarget):
@@ -74,26 +84,47 @@ async def bulk_close_issues(params: BulkCloseIssuesInput) -> dict:
         repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
 
-        results: list[dict] = []
+        if params.dry_run:
+            return ToolSuccess(
+                data={
+                    "dry_run": True,
+                    "results": [
+                        {"issue": number, "status": "would_close", "reason": params.reason}
+                        for number in params.issue_numbers
+                    ],
+                    "total": len(params.issue_numbers),
+                    "closed": 0,
+                    "message": f"Would close {len(params.issue_numbers)} issues.",
+                },
+            ).model_dump()
 
-        for issue_num in params.issue_numbers:
-            try:
-                if params.comment:
-                    await gh_client.run([
-                        "issue", "comment", str(issue_num),
-                        "--repo", repo, "--body", params.comment,
-                    ])
+        semaphore = asyncio.Semaphore(get_settings().max_concurrent_requests)
 
-                close_args = ["issue", "close", str(issue_num), "--repo", repo,
-                              "--reason", params.reason]
-                await gh_client.run(close_args)
+        async def close_one(issue_num: int) -> dict:
+            async with semaphore:
+                try:
+                    if params.comment:
+                        await gh_client.run([
+                            "issue", "comment", str(issue_num),
+                            "--repo", repo, "--body", params.comment,
+                        ])
 
-                results.append({"issue": issue_num, "status": "closed"})
-            except CLIError as exc:
-                if "already closed" in exc.stderr.lower():
-                    results.append({"issue": issue_num, "status": "already_closed"})
-                else:
-                    results.append({"issue": issue_num, "status": "failed", "error": exc.stderr.strip()})
+                    close_args = [
+                        "issue", "close", str(issue_num), "--repo", repo,
+                        "--reason", params.reason,
+                    ]
+                    await gh_client.run(close_args)
+                    return {"issue": issue_num, "status": "closed"}
+                except CLIError as exc:
+                    if "already closed" in exc.stderr.lower():
+                        return {"issue": issue_num, "status": "already_closed"}
+                    return {
+                        "issue": issue_num,
+                        "status": "failed",
+                        "error": exc.stderr.strip(),
+                    }
+
+        results = list(await asyncio.gather(*(close_one(number) for number in params.issue_numbers)))
 
         closed_count = sum(1 for r in results if r["status"] == "closed")
         return ToolSuccess(

@@ -12,6 +12,7 @@ No token, header, or secret is ever included in the response.
 from __future__ import annotations
 
 import logging
+import sys
 
 from pydantic import BaseModel
 
@@ -57,6 +58,20 @@ async def server_info(params: ServerInfoInput) -> dict:
         }[level]
 
         counts = level_counts(level)
+        registered_names: list[str] | None = None
+        server_module = sys.modules.get("server") or sys.modules.get("__main__")
+        if server_module is not None and hasattr(server_module, "mcp"):
+            registered_tools = await server_module.mcp.list_tools()
+            allowed_at_level = set(tools_for_level(level))
+            registered_names = sorted(
+                tool.name for tool in registered_tools if tool.name in allowed_at_level
+            )
+            counts = {
+                **counts,
+                "exposed": len(registered_names),
+                "hidden": max(int(counts.get("classified_total", 0)) - len(registered_names), 0),
+                "source": "live_registry",
+            }
 
         target = {
             "org_name": settings.org_name,
@@ -87,7 +102,9 @@ async def server_info(params: ServerInfoInput) -> dict:
                 "access_level_variable": "MCP_ACCESS_LEVEL",
                 "access_level_meaning": meaning,
                 "tool_exposure": counts,
-                "exposed_tools": tools_for_level(level),
+                "tool_profile": settings.tool_profile,
+                "tool_profile_variable": "MCP_TOOL_PROFILE",
+                "exposed_tools": registered_names if registered_names is not None else tools_for_level(level),
                 "scope_lock": scope_lock,
                 "target": target,
             },

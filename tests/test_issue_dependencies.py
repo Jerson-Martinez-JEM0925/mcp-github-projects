@@ -1,7 +1,6 @@
 """Unit tests for the REST-backed issue dependency tools."""
 from __future__ import annotations
 
-import os
 from unittest.mock import AsyncMock
 
 import pytest

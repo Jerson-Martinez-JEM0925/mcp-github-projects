@@ -187,6 +187,36 @@ class GitHubProjectSettings(BaseSettings):
         repr=False,
         description="Comma-separated request-token prefixes; empty disables filtering.",
     )
+    http_max_body_bytes: int = Field(
+        default=1_000_000,
+        validation_alias="MCP_HTTP_MAX_BODY_BYTES",
+        ge=1_024,
+        le=50_000_000,
+        description="Maximum Streamable HTTP request body size in bytes.",
+    )
+    http_rate_limit_per_minute: int = Field(
+        default=240,
+        validation_alias="MCP_HTTP_RATE_LIMIT_PER_MINUTE",
+        ge=1,
+        le=100_000,
+        description="Per-client request budget for the protected HTTP endpoint.",
+    )
+    http_validate_tokens: bool = Field(
+        default=True,
+        validation_alias="MCP_HTTP_VALIDATE_TOKENS",
+        description=(
+            "Validate bearer tokens against GitHub before exposing MCP metadata "
+            "over Streamable HTTP. Validation results are cached briefly by "
+            "token fingerprint."
+        ),
+    )
+    http_auth_cache_ttl_seconds: int = Field(
+        default=60,
+        validation_alias="MCP_HTTP_AUTH_CACHE_TTL_SECONDS",
+        ge=1,
+        le=3_600,
+        description="Positive bearer-validation cache TTL in seconds.",
+    )
 
     # ── Access level & scope lock (issue #34) ────────────────────
     # access_level reads MCP_ACCESS_LEVEL (NO GH_PROJECT_ prefix — parity with
@@ -215,6 +245,16 @@ class GitHubProjectSettings(BaseSettings):
             "exposes every tool allowed by MCP_ACCESS_LEVEL."
         ),
     )
+    tool_profile: str = Field(
+        default="full",
+        validation_alias="MCP_TOOL_PROFILE",
+        max_length=100,
+        description=(
+            "Role-based tool profile: full (default), developer, devops, "
+            "project_manager, read_only, or commenter. Profiles only narrow "
+            "the catalog; MCP_ACCESS_LEVEL remains the write/delete boundary."
+        ),
+    )
     # server_instructions reads MCP_SERVER_INSTRUCTIONS (parity with
     # mcp-monday-projects): replaces the built-in model instructions sent in
     # the MCP initialize result.
@@ -223,6 +263,36 @@ class GitHubProjectSettings(BaseSettings):
         validation_alias="MCP_SERVER_INSTRUCTIONS",
         max_length=4_000,
         description="Replaces the built-in MCP server instructions when non-empty.",
+    )
+    log_level: str = Field(
+        default="WARNING",
+        validation_alias="MCP_LOG_LEVEL",
+        max_length=20,
+        description="Root log level: CRITICAL, ERROR, WARNING, INFO or DEBUG.",
+    )
+    log_format: str = Field(
+        default="text",
+        validation_alias="MCP_LOG_FORMAT",
+        max_length=20,
+        description="Log format: text or json. JSON includes correlation/tool fields.",
+    )
+    otel_enabled: bool = Field(
+        default=False,
+        validation_alias="MCP_OTEL_ENABLED",
+        description="Enable optional OpenTelemetry tracing for MCP tool invocations.",
+    )
+    otel_service_name: str = Field(
+        default="github-project-mcp",
+        validation_alias="MCP_OTEL_SERVICE_NAME",
+        min_length=1,
+        max_length=128,
+        description="OpenTelemetry service.name resource value.",
+    )
+    otel_exporter_endpoint: str = Field(
+        default="",
+        validation_alias="MCP_OTEL_EXPORTER_OTLP_ENDPOINT",
+        max_length=500,
+        description="Optional OTLP/HTTP collector endpoint; the exporter default is used when empty.",
     )
     # Governed commits (create_branch / commit_files): branch and path fences.
     write_branch_prefixes: str = Field(
@@ -266,10 +336,40 @@ class GitHubProjectSettings(BaseSettings):
         ),
     )
 
+    # ── Startup behavior ─────────────────────────────────────────
+    validate_auth_on_startup: bool = Field(
+        default=True,
+        description=(
+            "When true (GH_PROJECT_VALIDATE_AUTH_ON_STARTUP), env-authenticated "
+            "stdio startup validates the token before accepting MCP traffic. "
+            "Disable only for controlled offline/start-fast deployments; tools "
+            "still fail cleanly if credentials are invalid."
+        ),
+    )
+
     # ── Timeouts & Retry ────────────────────────────────────────
     timeout_seconds: int = Field(default=30, ge=1, le=120)
     retry_delay_seconds: float = Field(default=2.0, ge=0, le=60)
     retry_attempts: int = Field(default=2, ge=0, le=5)
+    max_concurrent_requests: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description=(
+            "Maximum concurrent GitHub operations inside bulk tools "
+            "(GH_PROJECT_MAX_CONCURRENT_REQUESTS)."
+        ),
+    )
+    resource_cache_ttl_seconds: int = Field(
+        default=300,
+        ge=0,
+        le=86_400,
+        description=(
+            "TTL for stable in-process resource metadata such as labels, "
+            "milestones and workflow definitions "
+            "(GH_PROJECT_RESOURCE_CACHE_TTL_SECONDS; zero disables it)."
+        ),
+    )
 
     # ── Cache ───────────────────────────────────────────────────
     cache_ttl_hours: int = Field(default=24, ge=1, le=720)
@@ -402,6 +502,30 @@ class GitHubProjectSettings(BaseSettings):
                 f"(got '{self.access_level}')."
             )
         self.access_level = access
+
+        profile = (self.tool_profile or "full").strip().lower()
+        if profile not in ("full", "developer", "devops", "project_manager", "read_only", "commenter"):
+            raise ValueError(
+                "MCP_TOOL_PROFILE must be 'full', 'developer', 'devops', "
+                "'project_manager', 'read_only', or 'commenter' "
+                f"(got '{self.tool_profile}')."
+            )
+        self.tool_profile = profile
+
+        level = (self.log_level or "WARNING").strip().upper()
+        if level not in ("CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"):
+            raise ValueError(
+                "MCP_LOG_LEVEL must be CRITICAL, ERROR, WARNING, INFO or DEBUG "
+                f"(got '{self.log_level}')."
+            )
+        self.log_level = level
+        log_format = (self.log_format or "text").strip().lower()
+        if log_format not in ("text", "json"):
+            raise ValueError(
+                "MCP_LOG_FORMAT must be 'text' or 'json' "
+                f"(got '{self.log_format}')."
+            )
+        self.log_format = log_format
 
         missing = []
         if not self.org_name:

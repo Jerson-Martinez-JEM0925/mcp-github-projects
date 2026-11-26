@@ -9,6 +9,7 @@ ToolError on failure.
 from __future__ import annotations
 
 import logging
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -59,6 +60,17 @@ class ListProjectItemsInput(BaseModel):
     )
     due_date: str | None = Field(
         default=None, description="ISO 8601 date (YYYY-MM-DD)"
+    )
+    due_date_op: Literal["before", "after", "exact"] | None = Field(
+        default=None,
+        description="Comparison operator for due_date: before, after, or exact",
+    )
+    include_body: bool = Field(
+        default=False,
+        description=(
+            "Include full Issue/PullRequest/DraftIssue bodies in results. "
+            "False by default to keep board listings fast and compact."
+        ),
     )
     project_number: int | None = Field(
         default=None,
@@ -159,6 +171,7 @@ async def list_project_items(
         items = await project_service.list_items(
             metadata=metadata,
             filters=filters if filters else None,
+            include_body=params.include_body,
         )
         if params.repository is not None:
             repository = resolve_repository_target(params.repository)

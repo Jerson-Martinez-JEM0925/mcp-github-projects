@@ -187,9 +187,11 @@ query variant:
 > `GH_PROJECT_OWNER_TYPE=user` for a personal project.
 >
 > Set the value explicitly (`organization` or `user`) to skip detection —
-> useful in fully offline CI, or when the `gh` CLI is not available. If
-> detection cannot run (no `gh`, no auth, or a network error) the server falls
-> back to `organization` and logs a hint to set `GH_PROJECT_OWNER_TYPE=user`.
+> useful in fully offline CI, when the `gh` CLI is not available, or to avoid
+> the one-time first-request detection cost in Streamable HTTP request-auth
+> mode. If detection cannot run (no `gh`, no auth, or a network error) the
+> server falls back to `organization` and logs a hint to set
+> `GH_PROJECT_OWNER_TYPE=user`.
 
 > **Startup exit codes.** A missing or invalid setting (no target fields, an
 > unknown `MCP_ACCESS_LEVEL`, a malformed number) is reported as a single
@@ -333,6 +335,10 @@ logs, or a global cache.
 | `MCP_ALLOW_SHARED_TOKEN` | `false` | Required to opt into HTTP `env` mode |
 | `MCP_CLIENT_KEY` | unset | Optional constant-time `X-MCP-Client-Key` check |
 | `MCP_ALLOWED_TOKEN_PREFIXES` | `ghu_,github_pat_` | Comma-separated request-token prefixes; empty disables filtering |
+| `MCP_HTTP_MAX_BODY_BYTES` | `1000000` | Maximum MCP HTTP request body size; larger requests receive `413` |
+| `MCP_HTTP_RATE_LIMIT_PER_MINUTE` | `240` | Per-client request budget keyed by token fingerprint, falling back to remote address |
+| `MCP_HTTP_VALIDATE_TOKENS` | `true` | Validate bearer tokens against GitHub before exposing MCP metadata; verdicts are cached by token fingerprint, never by raw token |
+| `MCP_HTTP_AUTH_CACHE_TTL_SECONDS` | `60` | Positive validation cache TTL; negative verdicts use a shorter cache window |
 
 A missing/malformed bearer, wrong client key, or rejected prefix returns `401`
 with `WWW-Authenticate: Bearer` and a generic JSON body. The default GitHub
@@ -361,6 +367,55 @@ The `oauth` block for GitHub App user access tokens will be documented separatel
 The HTTP endpoint supports MCP `initialize` and `tools/list` using JSON
 responses. Existing stdio clients and the stdio startup/authentication path are
 unchanged.
+
+### Observability
+
+Logs always go to stderr so stdout remains reserved for MCP stdio framing. Every
+error envelope and log line carries the same short correlation ID. `MCP_LOG_LEVEL=DEBUG`
+adds per-tool latency records, and `MCP_LOG_FORMAT=json` emits one structured JSON
+object per line.
+
+OpenTelemetry tracing is opt-in:
+
+```env
+MCP_OTEL_ENABLED=true
+MCP_OTEL_SERVICE_NAME=github-project-mcp
+MCP_OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+```
+
+The server creates one span per tool invocation (`mcp.tool <name>`) with only the
+tool name, access tier, and correlation ID. Tool arguments, issue/PR content,
+repository files, tokens, and error text are deliberately not span attributes.
+If tracing setup or exporter initialization fails, the server logs a warning and
+continues with tracing disabled rather than failing startup.
+
+### Role-based tool profiles
+
+`MCP_ACCESS_LEVEL` remains the hard read/write/delete boundary. On top of it,
+`MCP_TOOL_PROFILE` narrows the visible catalog so a client sees the tools that
+match its operator's job instead of the entire 177-tool surface. A profile can
+only reduce exposure; it never grants writes or deletes denied by the access
+level.
+
+| Profile | Intended operator | Catalog emphasis |
+|---|---|---|
+| `full` | trusted maintainer/operator | everything allowed by `MCP_ACCESS_LEVEL` (default) |
+| `developer` | software engineer | issues, PRs, repository content, project-board updates, CI read |
+| `devops` | platform/release engineer | developer surface plus workflow/deployment/release automation and controlled merges |
+| `project_manager` | PM/delivery lead | Projects V2, milestones, labels, planning/reporting and non-destructive issue writes |
+| `read_only` | analyst/auditor | read-only repository, PR, Actions and project tools |
+| `commenter` | triage participant | issue reading plus comments |
+
+Example for a Project Manager instance:
+
+```env
+MCP_ACCESS_LEVEL=write
+MCP_TOOL_PROFILE=project_manager
+GH_PROJECT_SCOPE_LOCK=true
+```
+
+Use `MCP_WRITE_TOOL_ALLOWLIST` only when an even narrower exception list is
+needed. Unknown profile names fail configuration validation at startup.
 
 ### Model instructions, repository documentation and governed commits
 

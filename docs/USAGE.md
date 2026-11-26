@@ -13,7 +13,7 @@ Usage guide for the GitHub Project Management MCP server, with examples per cate
 
 ## Tool Categories
 
-The main categories below; the extended capability suite (60 tools), repository/project provisioning and the permanent-delete tools are listed in [TOOLS.md](TOOLS.md).
+The main categories below; the extended capability suite (62 tools), repository/project provisioning and the permanent-delete tools are listed in [TOOLS.md](TOOLS.md).
 
 | Category | Tools | Count |
 |----------|-------|-------|
@@ -23,7 +23,7 @@ The main categories below; the extended capability suite (60 tools), repository/
 | Milestones | create_milestone, update_milestone, close_milestone, list_milestones | 4 |
 | Labels | create_label, list_labels | 2 |
 | Stats & Planning | get_project_stats, get_sprint_summary, sprint_planning, generate_release_notes, link_pull_request, create_pull_request, update_pull_request | 7 |
-| CI / Actions | list_workflows, list_workflow_runs, get_workflow_run, get_pr_checks, get_job_logs, rerun_workflow_run, dispatch_workflow, merge_pull_request | 8 |
+| CI / Actions | list_workflows, list_workflow_runs, get_workflow_run, get_pr_checks, get_job_logs, rerun_workflow_run, cancel_workflow_run, list_workflow_artifacts, list_environments, list_deployments, create_deployment, list_releases, create_release, dispatch_workflow, merge_pull_request | 15 |
 | Response quality | repository_health_summary, pull_request_lifecycle_summary, issue_activity_digest, workflow_run_diagnostic_summary, check_conclusion_summary, label_milestone_consistency_report, issue_metadata_consistency_report, issue_closure_readiness_report, paginated_issue_page, response_diagnostics | 10 |
 | Workflows | complete_issue, daily_standup, sprint_review, triage_new_issues, escalate_overdue, handoff_issue, create_epic, close_sprint, blocked_report | 9 |
 
@@ -55,6 +55,8 @@ fields (single-select option name, date, number, text or milestone title). Use i
 fields that have no dedicated attribute.
 
 **Filters** (all optional): status, priority, labels, assignee, milestone, due_date, due_date_op (before/after/exact)
+
+Bodies are compact by default: `include_body` is `false`, so list responses omit full issue/PR bodies and the GraphQL query does not ask GitHub to materialize them. Set `include_body: true` only when the client really needs body text; use `get_issue_detail` for one-off detail reads.
 
 ### create_project_item
 
@@ -693,9 +695,10 @@ Output: { id, number, name, layout: "TABLE", filter }
 Verify PR checks, trigger an existing `workflow_dispatch`, or merge a ready
 pull request without leaving the MCP. All tools default to the configured
 repository; `owner`/`repo` overrides are refused when
-`GH_PROJECT_SCOPE_LOCK=true`. Dispatch/re-run require Actions write (and the
-classic `workflow` scope). Merging also requires Pull requests write and
-Actions/checks read.
+`GH_PROJECT_SCOPE_LOCK=true`. Dispatch/re-run/cancel and deployment creation
+require Actions or Deployments write depending on token type (classic tokens
+also need `workflow` for workflow mutations). Release creation needs Contents
+write. Merging also requires Pull requests write and Actions/checks read.
 
 | Tool | Access | Purpose |
 |------|--------|---------|
@@ -705,6 +708,13 @@ Actions/checks read.
 | `get_workflow_run` | read | One run plus its jobs and the names of the failed steps. |
 | `get_job_logs` | read | Last `tail_lines` (≤ 2000) of a job log, terminal escapes stripped, secrets redacted. |
 | `rerun_workflow_run` | write | Re-run failed jobs (default) or the whole run (`failed_only: false`). |
+| `cancel_workflow_run` | write | Request cancellation of a queued or in-progress run. |
+| `list_workflow_artifacts` | read | Artifact names, sizes, expiry, and archive download URLs for one run. |
+| `list_environments` | read | Deployment environments with summarized protection-rule counts. |
+| `list_deployments` | read | Deployments filtered by environment, ref, or SHA. |
+| `create_deployment` | write | Create a deployment for a validated ref; `auto_merge` defaults to false and required contexts are never bypassed. |
+| `list_releases` | read | Releases with tag, publication state, and asset counts. |
+| `create_release` | write | Create a release for a validated tag, with draft/prerelease controls. |
 | `dispatch_workflow` | write | Trigger a `workflow_dispatch` run on `ref`, with up to 10 string `inputs`. |
 | `merge_pull_request` | write | Merge an open, non-draft PR only for its expected head SHA, clean mergeability and passing checks; repository protections remain enforced. |
 
@@ -713,6 +723,12 @@ make call TOOL=get_pr_checks ARGS='{"pr_number": 40}'
 make call TOOL=list_workflow_runs ARGS='{"branch": "feat/x", "status": "failure", "limit": 5}'
 make call TOOL=get_workflow_run ARGS='{"run_id": 123456789}'
 make call TOOL=get_job_logs ARGS='{"job_id": 987654321, "tail_lines": 100}'
+make call TOOL=cancel_workflow_run ARGS='{"run_id": 123456789}'
+make call TOOL=list_workflow_artifacts ARGS='{"run_id": 123456789}'
+make call TOOL=list_environments ARGS='{}'
+make call TOOL=list_deployments ARGS='{"environment": "production", "limit": 5}'
+make call TOOL=create_release ARGS='{"tag_name": "v1.2.0", "name": "v1.2.0", "generate_release_notes": true}'
+make call TOOL=create_deployment ARGS='{"ref": "main", "environment": "production", "description": "Release v1.2.0"}'
 make call TOOL=dispatch_workflow ARGS='{"workflow": "ci.yaml", "ref": "feat/example", "inputs": {"mode": "check"}}'
 make call TOOL=merge_pull_request ARGS='{"pull_number": 40, "expected_head_sha": "<40-char-head-sha>", "merge_method": "squash"}'
 ```
@@ -827,7 +843,8 @@ MCP client → docker run --rm -i --env-file .env mcp-github-projects:latest →
 ```
 
 The server runs in its own container and talks to the MCP client over
-stdin/stdout (MCP stdio transport); logs go to stderr. See
+stdin/stdout (MCP stdio transport) by default; logs go to stderr. It can
+also run as a stateless Streamable HTTP service when MCP_TRANSPORT=streamable-http. See
 [architecture/PROJECT_STRUCTURE.md](architecture/PROJECT_STRUCTURE.md) for the
 layering (tools → services → clients) and the ServiceFactory.
 
@@ -851,9 +868,11 @@ mcp-github-projects/
 │   ├── profiles.py              ← Multi-target profile system
 │   └── capabilities.py          ← Tool → permission mapping
 ├── clients/
-│   ├── gh_cli_client.py         ← Async wrapper for `gh` CLI
-│   ├── graphql_client.py        ← GraphQL API client
-│   └── cache_manager.py         ← File-based cache with TTL
+│   ├── gh_cli_client.py         ← Async `gh` wrapper plus direct REST fast paths
+│   ├── rest_client.py           ← Pooled async REST transport
+│   ├── graphql_client.py        ← Pooled retrying GraphQL API client
+│   ├── resource_cache.py        ← Short-lived stable-resource cache
+│   └── cache_manager.py         ← File-based project metadata cache with TTL
 ├── models/
 │   └── responses.py             ← ToolSuccess/ToolError response models
 ├── services/
@@ -872,7 +891,7 @@ mcp-github-projects/
 │   ├── bulk/                    ← bulk_close, search_issues
 │   ├── ci/                      ← workflows, runs, PR checks, job logs, rerun/dispatch
 │   └── meta/                    ← stats, sprint_summary, link/create_pr, bulk_assign,
-│                                  capability_suite (60 tools)
+│                                  capability_suite (62 tools)
 └── docs/
     ├── architecture/PROJECT_STRUCTURE.md ← Layout & conventions (authoritative)
     ├── USAGE.md                 ← This file

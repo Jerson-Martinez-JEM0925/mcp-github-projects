@@ -14,7 +14,6 @@ Two behaviours are proven:
      call proceeds.
 """
 
-import json
 import os
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch

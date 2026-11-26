@@ -22,18 +22,32 @@ from core.config import get_settings  # noqa: E402
 from core.factory import use_service_factory  # noqa: E402
 from tools.ci.actions import (  # noqa: E402
     CI_TOOLS,
+    CancelWorkflowRunInput,
+    CreateDeploymentInput,
+    CreateReleaseInput,
     DispatchWorkflowInput,
     GetJobLogsInput,
     GetPrChecksInput,
     GetWorkflowRunInput,
+    ListDeploymentsInput,
+    ListEnvironmentsInput,
+    ListReleasesInput,
+    ListWorkflowArtifactsInput,
     ListWorkflowRunsInput,
     ListWorkflowsInput,
     MergePullRequestInput,
     RerunWorkflowRunInput,
+    cancel_workflow_run,
+    create_deployment,
+    create_release,
     dispatch_workflow,
     get_job_logs,
     get_pr_checks,
     get_workflow_run,
+    list_deployments,
+    list_environments,
+    list_releases,
+    list_workflow_artifacts,
     list_workflow_runs,
     list_workflows,
     merge_pull_request,
@@ -89,7 +103,10 @@ async def _with(gh: RoutingGH, coro_fn, params):
 
 
 def test_read_tools_are_read_and_write_tools_are_write() -> None:
-    reads = {"list_workflows", "list_workflow_runs", "get_workflow_run", "get_pr_checks", "get_job_logs"}
+    reads = {
+        "list_workflows", "list_workflow_runs", "get_workflow_run", "get_pr_checks", "get_job_logs",
+        "list_workflow_artifacts", "list_environments", "list_deployments", "list_releases",
+    }
     for fn in CI_TOOLS:
         expected = ToolAccess.READ if fn.__name__ in reads else ToolAccess.WRITE
         assert classify(fn.__name__) is expected, fn.__name__
@@ -233,6 +250,26 @@ def test_bounds_are_enforced() -> None:
         DispatchWorkflowInput(workflow="ci.yaml", ref="main..unsafe")
 
 
+@pytest.mark.anyio
+async def test_devops_read_surfaces_shape_and_paths() -> None:
+    gh = RoutingGH({
+        f"{REPO}/actions/runs/5/artifacts": {"total_count": 1, "artifacts": [{"id": 9, "name": "dist"}]},
+        f"{REPO}/environments": {"total_count": 1, "environments": [{"id": 2, "name": "prod", "protection_rules": [{}]}]},
+        f"{REPO}/deployments": [{"id": 3, "ref": "main", "environment": "prod"}],
+        f"{REPO}/releases": [{"id": 4, "tag_name": "v1.0.0", "html_url": "https://example.test/release"}],
+    })
+    artifacts = await _with(gh, list_workflow_artifacts, ListWorkflowArtifactsInput(run_id=5))
+    environments = await _with(gh, list_environments, ListEnvironmentsInput())
+    deployments = await _with(gh, list_deployments, ListDeploymentsInput(environment="prod"))
+    releases = await _with(gh, list_releases, ListReleasesInput())
+    assert artifacts["data"]["artifacts"][0]["id"] == 9
+    assert environments["data"]["environments"][0]["protection_rules"] == 1
+    assert deployments["data"]["deployments"][0]["environment"] == "prod"
+    assert releases["data"]["releases"][0]["tag_name"] == "v1.0.0"
+    assert gh.calls[0][1].startswith(f"{REPO}/actions/runs/5/artifacts?per_page=30")
+    assert "environment=prod" in gh.calls[2][1]
+
+
 # ── Write tools ─────────────────────────────────────────────────────────────
 
 
@@ -243,6 +280,23 @@ async def test_rerun_paths(failed_only: bool, suffix: str) -> None:
     result = await _with(gh, rerun_workflow_run, RerunWorkflowRunInput(run_id=5, failed_only=failed_only))
     assert result["ok"] is True
     assert gh.calls == [["api", "--method", "POST", f"{REPO}/actions/runs/5/{suffix}"]]
+
+
+@pytest.mark.anyio
+async def test_cancel_release_and_deployment_paths_and_typed_fields() -> None:
+    gh = RoutingGH({
+        f"{REPO}/releases": {"id": 10, "tag_name": "v1.2.0", "html_url": "https://example.test/r", "assets": []},
+        f"{REPO}/deployments": {"id": 11, "ref": "main", "environment": "prod"},
+    })
+    cancelled = await _with(gh, cancel_workflow_run, CancelWorkflowRunInput(run_id=5))
+    release = await _with(gh, create_release, CreateReleaseInput(tag_name="v1.2.0", prerelease=True))
+    deployment = await _with(gh, create_deployment, CreateDeploymentInput(ref="main", environment="prod"))
+    assert cancelled["data"]["cancellation_requested"] is True
+    assert release["data"]["release"]["id"] == 10
+    assert deployment["data"]["deployment"]["id"] == 11
+    assert gh.calls[0] == ["api", "--method", "POST", f"{REPO}/actions/runs/5/cancel"]
+    assert "-F" in gh.calls[1] and "prerelease=true" in gh.calls[1]
+    assert "auto_merge=false" in gh.calls[2]
 
 
 @pytest.mark.anyio

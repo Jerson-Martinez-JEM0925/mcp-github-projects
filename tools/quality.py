@@ -17,7 +17,7 @@ from core.access import resolve_repository
 from core.config import get_settings
 from core.error_handling import build_error_response, handle_tool_error
 from core.factory import get_service_factory
-from core.hardening import bounded_text, parse_json_array, parse_json_object
+from core.hardening import bounded_text
 from models.responses import ToolSuccess
 
 MAX_ITEMS = 100

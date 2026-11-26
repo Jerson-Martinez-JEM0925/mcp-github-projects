@@ -31,6 +31,7 @@ import pytest
 os.environ.setdefault("GH_PROJECT_ORG_NAME", "ContractTestOrg")
 os.environ.setdefault("GH_PROJECT_REPO_NAME", "ContractTestRepo")
 os.environ.setdefault("GH_PROJECT_PROJECT_NUMBER", "1")
+os.environ.setdefault("MCP_ACCESS_LEVEL", "full")
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -322,11 +323,6 @@ class TestCapabilitiesCoverage:
             f"{sorted(missing)[:10]}{'...' if len(missing) > 10 else ''}"
         )
 
-    @pytest.mark.xfail(
-        reason="Pre-existing: build_automation_decision and build_issue_bundle "
-        "have capability entries but are not yet registered in the server",
-        strict=False,
-    )
     def test_no_orphan_capabilities(self) -> None:
         """No capability entries for tools that don't exist in the server."""
         from capabilities import TOOL_CAPABILITIES
@@ -341,11 +337,11 @@ class TestCapabilitiesCoverage:
         )
 
     def test_capability_tool_names_list_matches(self) -> None:
-        """CAPABILITY_TOOL_NAMES list must contain exactly 60 entries."""
+        """CAPABILITY_TOOL_NAMES list must contain exactly 62 entries."""
         from tools.capability_suite import CAPABILITY_TOOL_NAMES
 
-        assert len(CAPABILITY_TOOL_NAMES) == 60, (
-            f"Expected 60 capability suite tools, got {len(CAPABILITY_TOOL_NAMES)}"
+        assert len(CAPABILITY_TOOL_NAMES) == 62, (
+            f"Expected 62 capability suite tools, got {len(CAPABILITY_TOOL_NAMES)}"
         )
 
     def test_capability_suite_functions_exist(self) -> None:
@@ -397,11 +393,12 @@ class TestStableToolSchemas:
         # legacy issue_or_pr_number argument while accepting issue_number as an
         # alias. Optional repository and link-keyword fields preserve existing
         # callers. The generated catalog and unit tests are updated together.
-        # Rebaselined for the multi-project board selector. Project-board
-        # tools retain their legacy default behavior while exposing an optional
-        # project_number selector and GH_PROJECT_PROJECT_NUMBERS allowlist.
-        # The digest is updated together with the documented protocol change.
-        assert digest == "77acfd5038316c2a6ee1ea7c174469f84c5858d1eac14ac60a8306fca6739270", (
+        # Rebaselined for the hardening/performance overhaul: list_project_items
+        # gained the documented due_date_op/include_body selectors, the two orphan
+        # capability-suite tools are now registered, and the DevOps surface gained
+        # release/deployment/artifact/environment/cancel tools. The digest is
+        # updated together with the documented protocol change.
+        assert digest == "14ffc69346beb066983f68d9944d3c8f2a7270f14fe7025374e447bc5e4a25ef", (
             f"Stable tool schema digest changed: {digest}. "
             "Update intentionally and document the protocol change."
         )

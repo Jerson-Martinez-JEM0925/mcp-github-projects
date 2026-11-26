@@ -27,7 +27,11 @@ FINDINGS=0
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MCP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-REPO_ROOT="$(cd "${MCP_DIR}/.." && pwd)"
+
+if ! REPO_ROOT="$(git -C "$MCP_DIR" rev-parse --show-toplevel 2>/dev/null)"; then
+    echo -e "${RED}✗ scan_secrets.sh must run inside the MCP git repository.${NC}"
+    exit 2
+fi
 
 # Patterns to detect (POSIX ERE)
 PATTERNS=(
@@ -51,17 +55,28 @@ for pattern in "${PATTERNS[@]}"; do
     # Search tracked files only, exclude known safe files
     MATCHES=$(cd "$REPO_ROOT" && git grep -lP "$pattern" -- \
         ':!*.md' \
-        ':!mcp/scripts/scan_secrets.sh' \
-        ':!mcp/scripts/preflight.sh' \
-        ':!mcp/docs/*' \
+        ':!scripts/scan_secrets.sh' \
+        ':!scripts/preflight.sh' \
+        ':!docs/*' \
         2>/dev/null || true)
 
     if [ -n "$MATCHES" ]; then
+        # .env.example intentionally contains an all-x placeholder. Filter that
+        # exact placeholder class while still failing on any realistic value.
+        if echo "$MATCHES" | grep -qx '.env.example'; then
+            REAL_EXAMPLE_MATCH=$(cd "$REPO_ROOT" && git grep -P "$pattern" -- .env.example 2>/dev/null \
+                | grep -vE '(ghp|gho|ghs|ghu)_x{8,}|github_pat_x{8,}' || true)
+            if [ -z "$REAL_EXAMPLE_MATCH" ]; then
+                MATCHES=$(echo "$MATCHES" | grep -vx '.env.example' || true)
+            fi
+        fi
+    fi
+
+    if [ -n "$MATCHES" ]; then
         echo -e "${RED}✗ Pattern '$pattern' found in:${NC}"
-        echo "$MATCHES" | while read -r file; do
-            echo "    $file"
-            FINDINGS=$((FINDINGS + 1))
-        done
+        echo "$MATCHES"
+        COUNT=$(printf '%s\n' "$MATCHES" | sed '/^$/d' | wc -l)
+        FINDINGS=$((FINDINGS + COUNT))
     fi
 done
 
@@ -76,8 +91,8 @@ if [ -n "$TRACKED_ENV" ]; then
 fi
 
 # Check for inline token values in mcp.json-like configs
-INLINE_TOKENS=$(cd "$REPO_ROOT" && git grep -lP '"(ghp_|github_pat_|gho_|ghs_)[A-Za-z0-9]+"' -- \
-    ':!*.md' ':!mcp/scripts/*' ':!mcp/docs/*' 2>/dev/null || true)
+INLINE_TOKENS=$(cd "$REPO_ROOT" && git grep -lP '"(ghp_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,}|gho_[A-Za-z0-9]{36,}|ghs_[A-Za-z0-9]{36,})"' -- \
+    ':!*.md' ':!scripts/*' ':!docs/*' 2>/dev/null || true)
 if [ -n "$INLINE_TOKENS" ]; then
     echo -e "${RED}✗ Inline token values found in config files:${NC}"
     echo "$INLINE_TOKENS" | while read -r file; do
@@ -95,7 +110,7 @@ if [ "$SCAN_HISTORY" = "--history" ]; then
     for pattern in "${PATTERNS[@]}"; do
         HISTORY_MATCHES=$(cd "$REPO_ROOT" && git log --all -p --diff-filter=A \
             -G "$pattern" --format="%H %s" -- \
-            ':!*.md' ':!mcp/scripts/*' ':!mcp/docs/*' \
+            ':!*.md' ':!scripts/*' ':!docs/*' \
             2>/dev/null | head -20 || true)
 
         if [ -n "$HISTORY_MATCHES" ]; then

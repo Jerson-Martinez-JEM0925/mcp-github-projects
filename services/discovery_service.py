@@ -192,7 +192,6 @@ class DiscoveryService:
         Raises:
             GraphQLError: If the response structure is unexpected.
         """
-        data = response.get("data", {})
         request_id = response.get("request_id")
 
         # Extract project data based on owner_type (organization or user).

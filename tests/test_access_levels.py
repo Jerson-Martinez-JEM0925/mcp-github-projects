@@ -15,7 +15,8 @@ No GitHub API call is made; server registration is a structural, offline check.
 import asyncio
 import os
 import sys
-from unittest.mock import AsyncMock, patch
+from types import ModuleType, SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
@@ -231,6 +232,29 @@ async def test_server_info_reports_level_and_scope_lock(monkeypatch) -> None:
     assert data["target"]["repository"] == "jersonmartinez/mcp-github-projects"
     # Delete tools are visible in the exposed list at full.
     assert "delete_issue" in data["exposed_tools"]
+
+
+@pytest.mark.anyio
+async def test_server_info_uses_main_module_live_registry(monkeypatch) -> None:
+    monkeypatch.setenv("MCP_ACCESS_LEVEL", "full")
+    get_settings.cache_clear()
+
+    class FakeMCP:
+        async def list_tools(self):
+            return [SimpleNamespace(name="delete_issue")]
+
+    main_module = ModuleType("__main__")
+    main_module.mcp = FakeMCP()
+    monkeypatch.delitem(sys.modules, "server", raising=False)
+    monkeypatch.setitem(sys.modules, "__main__", main_module)
+
+    from tools.meta.server_info import ServerInfoInput, server_info
+
+    result = await server_info(ServerInfoInput())
+    assert result["ok"] is True
+    assert result["data"]["tool_exposure"]["exposed"] == 1
+    assert result["data"]["tool_exposure"]["source"] == "live_registry"
+    assert result["data"]["exposed_tools"] == ["delete_issue"]
 
 
 @pytest.mark.anyio

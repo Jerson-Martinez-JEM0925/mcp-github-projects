@@ -66,9 +66,13 @@ class GraphQLError(GitHubProjectError):
         *,
         errors: list[dict] | None = None,
         request_id: str | None = None,
+        retryable: bool = False,
+        retry_after: float | None = None,
     ) -> None:
         super().__init__(message, request_id=request_id)
         self.errors = errors or []
+        self.retryable = retryable
+        self.retry_after = retry_after
 
 
 class ValidationError(GitHubProjectError):

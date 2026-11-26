@@ -20,7 +20,7 @@ concurrency:
 
 env:
   IMAGE: github-project-mcp:ci
-  DOCKER_BUILDKIT: '0'
+  DOCKER_BUILDKIT: '1'
 
 jobs:
   build:
@@ -33,7 +33,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Build image
-        run: DOCKER_BUILDKIT=0 docker build -t "$IMAGE" .
+        run: docker build -t "$IMAGE" .
       - name: Export image artifact
         run: docker save "$IMAGE" | gzip > image.tar.gz
       - name: Upload image artifact
@@ -73,9 +73,55 @@ jobs:
         with:
           persist-credentials: false
       - name: Build test image
-        run: DOCKER_BUILDKIT=0 docker build --build-arg INSTALL_TEST_DEPS=true -t github-project-mcp:test .
-      - name: Run unit tests
-        run: docker run --rm github-project-mcp:test python3 -m pytest tests/ -v --tb=short --ignore=tests/test_contracts.py
+        run: docker build --build-arg INSTALL_TEST_DEPS=true -t github-project-mcp:test .
+      - name: Run unit and contract tests
+        run: docker run --rm github-project-mcp:test python3 -m pytest tests/ -v --tb=short
+
+  quality:
+    name: Lint, Types and Dependency Security
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Build test image
+        run: docker build --build-arg INSTALL_TEST_DEPS=true -t github-project-mcp:test .
+      - name: Run Ruff correctness lint
+        run: docker run --rm github-project-mcp:test ruff check --no-cache .
+      - name: Type-check hardened core and clients
+        run: >-
+          docker run --rm github-project-mcp:test mypy --no-incremental
+          clients/graphql_client.py clients/rest_client.py clients/resource_cache.py
+          clients/gh_cli_client.py core/config.py core/http_auth.py core/observability.py
+          core/context.py
+      - name: Run Bandit security scan
+        run: docker run --rm github-project-mcp:test bandit -r . -x ./tests,./docs,./profiles -ll -ii
+      - name: Audit Python dependencies
+        run: docker run --rm github-project-mcp:test pip-audit --progress-spinner off
+
+  image-security:
+    name: Container Image Vulnerability Scan
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download image artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: mcp-image
+      - name: Load image
+        run: docker load < image.tar.gz
+      - name: Scan image for critical vulnerabilities
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        with:
+          image-ref: ${{ env.IMAGE }}
+          format: table
+          exit-code: '1'
+          severity: CRITICAL
+          ignore-unfixed: true
 
   tools:
     name: Tool-Count Regression

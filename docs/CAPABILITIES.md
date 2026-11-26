@@ -26,6 +26,25 @@ The five permanent-delete tools (`delete_project_item`, `delete_issue`,
 classified *delete*. They appear ONLY at `full`, and each refuses unless called
 with `confirm:true`, naming the reversible alternative in its refusal.
 
+### `MCP_TOOL_PROFILE` — role-shaped catalog exposure
+
+`MCP_TOOL_PROFILE` narrows the registered tools by role after the access level
+has been applied. It is a visibility/ergonomics control and a least-privilege
+boundary for tool selection, but it never expands the write/delete boundary.
+
+| Profile | Capability emphasis |
+|---------|---------------------|
+| `full` | every capability allowed by `MCP_ACCESS_LEVEL` |
+| `developer` | issues, pull requests, repository content, project-board updates, Actions read |
+| `devops` | developer surface plus workflow/deployment/release automation and controlled merges |
+| `project_manager` | Projects V2, planning, milestones, labels, reporting and non-destructive issue writes |
+| `read_only` | read capabilities only |
+| `commenter` | issue read plus comment write |
+
+Use it together with, not instead of, the token's GitHub permissions:
+`MCP_ACCESS_LEVEL=write MCP_TOOL_PROFILE=project_manager` gives a PM-shaped
+mutation surface without permanent deletes.
+
 ### `GH_PROJECT_SCOPE_LOCK` — target confinement
 
 | Value | Effect |
@@ -62,8 +81,8 @@ This is the parity concept with `mcp-monday-projects`' `MONDAY_WORKSPACE_ID`.
 | `labels.write` | Create and modify repository labels |
 | `pull_requests.read` | Read PR details, linked issues, merge status |
 | `pull_requests.write` | Create/update PRs, link PRs, merge ready PRs, close linked issues |
-| `actions.read` | List workflows and runs, read check runs, commit statuses and job logs |
-| `actions.write` | Re-run workflow runs and dispatch `workflow_dispatch` workflows |
+| `actions.read` | List workflows, runs, artifacts, environments and deployments; read check runs, commit statuses and job logs |
+| `actions.write` | Re-run/cancel workflow runs, dispatch `workflow_dispatch` workflows, and create deployments |
 | `repositories.write` | Create repositories for a user or organization |
 
 ---
@@ -88,6 +107,8 @@ This is the parity concept with `mcp-monday-projects`' `MONDAY_WORKSPACE_ID`.
 | `pull_requests.write` | `repo` |
 | `actions.read` | `repo` |
 | `actions.write` | `repo`, `workflow` |
+| `contents.read` | `repo` |
+| `contents.write` | `repo` |
 
 **Minimum classic PAT for full MCP access:** `repo`, `project`, `read:org`
 
@@ -107,8 +128,10 @@ This is the parity concept with `mcp-monday-projects`' `MONDAY_WORKSPACE_ID`.
 | `labels.write` | Issues: Read and write | — |
 | `pull_requests.read` | Pull requests: Read | — |
 | `pull_requests.write` | Pull requests: Read and write | — |
-| `actions.read` | Actions: Read, Checks: Read, Commit statuses: Read, Pull requests: Read | — |
-| `actions.write` | Actions: Read and write | — |
+| `actions.read` | Actions: Read, Checks: Read, Commit statuses: Read, Pull requests: Read, Deployments: Read | — |
+| `actions.write` | Actions: Read and write, Deployments: Read and write | — |
+| `contents.read` | Contents: Read | — |
+| `contents.write` | Contents: Read and write | — |
 
 ---
 

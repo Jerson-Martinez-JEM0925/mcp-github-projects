@@ -27,6 +27,7 @@ from urllib.parse import urlencode
 from pydantic import BaseModel, Field, field_validator
 
 from clients.gh_cli_client import CLIError
+from clients.resource_cache import get_or_load, scoped_key
 from core.access import enforce_scope
 from core.config import get_settings
 from core.error_handling import build_error_response, handle_tool_error
@@ -101,6 +102,69 @@ class RerunWorkflowRunInput(_RepoTarget):
     failed_only: bool = Field(
         default=True, description="Re-run only failed jobs (default) instead of the whole run."
     )
+
+
+class CancelWorkflowRunInput(_RepoTarget):
+    run_id: int = Field(..., ge=1, description="Workflow run id to cancel.")
+
+
+class ListWorkflowArtifactsInput(_RepoTarget):
+    run_id: int = Field(..., ge=1, description="Workflow run id whose artifacts are listed.")
+    limit: int = Field(default=30, ge=1, le=MAX_LIST, description="Max artifacts returned.")
+
+
+class ListEnvironmentsInput(_RepoTarget):
+    limit: int = Field(default=30, ge=1, le=MAX_LIST, description="Max environments returned.")
+
+
+class ListDeploymentsInput(_RepoTarget):
+    environment: Optional[str] = Field(default=None, max_length=255, description="Filter by environment name.")
+    ref: Optional[str] = Field(default=None, max_length=255, description="Filter by branch, tag, or SHA.")
+    sha: Optional[str] = Field(default=None, min_length=7, max_length=40, description="Filter by commit SHA.")
+    limit: int = Field(default=20, ge=1, le=MAX_LIST, description="Max deployments returned.")
+
+
+class ListReleasesInput(_RepoTarget):
+    limit: int = Field(default=20, ge=1, le=MAX_LIST, description="Max releases returned.")
+
+
+class CreateReleaseInput(_RepoTarget):
+    tag_name: str = Field(..., min_length=1, max_length=255, description="Git tag name for the release.")
+    target_commitish: Optional[str] = Field(
+        default=None, max_length=255, description="Branch or commit SHA the tag targets (default branch when omitted)."
+    )
+    name: Optional[str] = Field(default=None, max_length=255, description="Release title.")
+    body: str = Field(default="", max_length=125_000, description="Release notes Markdown.")
+    draft: bool = Field(default=False, description="Create an unpublished draft release.")
+    prerelease: bool = Field(default=False, description="Mark the release as a prerelease.")
+    generate_release_notes: bool = Field(
+        default=False, description="Ask GitHub to generate release notes; explicit body is still returned separately."
+    )
+
+    @field_validator("tag_name")
+    @classmethod
+    def _safe_tag(cls, value: str) -> str:
+        return DispatchWorkflowInput._safe_git_ref(value)
+
+
+class CreateDeploymentInput(_RepoTarget):
+    ref: str = Field(..., min_length=1, max_length=255, description="Branch, tag, or SHA to deploy.")
+    environment: str = Field(..., min_length=1, max_length=255, description="Deployment environment name.")
+    task: str = Field(default="deploy", min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.-]+$", description="Deployment task.")
+    description: str = Field(default="", max_length=512, description="Human-readable deployment description.")
+    auto_merge: bool = Field(
+        default=False,
+        description="Allow GitHub to merge the default branch into ref. Disabled by default to avoid hidden merges.",
+    )
+    transient_environment: bool = Field(default=False, description="Whether the environment is short-lived.")
+    production_environment: Optional[bool] = Field(
+        default=None, description="Optional explicit production marker; omitted means GitHub infers it from the environment."
+    )
+
+    @field_validator("ref")
+    @classmethod
+    def _safe_deployment_ref(cls, value: str) -> str:
+        return DispatchWorkflowInput._safe_git_ref(value)
 
 
 class DispatchWorkflowInput(_RepoTarget):
@@ -192,6 +256,24 @@ async def _post(path: str, body: dict[str, Any] | None = None) -> None:
     await get_service_factory().gh().run(args)
 
 
+async def _post_json(path: str, body: dict[str, Any]) -> Any:
+    """POST a JSON body and parse the JSON response.
+
+    Booleans/null use ``-F`` so both gh and the direct REST fast path encode
+    them as typed JSON rather than strings.
+    """
+    args = ["api", "--method", "POST", path]
+    for key, value in body.items():
+        if value is None:
+            args += ["-F", f"{key}=null"]
+        elif isinstance(value, bool):
+            args += ["-F", f"{key}={'true' if value else 'false'}"]
+        else:
+            args += ["-f", f"{key}={value}"]
+    result = await get_service_factory().gh().run(args)
+    return json.loads(result.stdout) if result.stdout.strip() else {}
+
+
 async def _put(path: str, body: dict[str, Any]) -> Any:
     args = ["api", "--method", "PUT", path]
     for key, value in body.items():
@@ -213,6 +295,62 @@ def _run_summary(run: dict[str, Any]) -> dict[str, Any]:
         "attempt": run.get("run_attempt"),
         "created_at": run.get("created_at"),
         "url": run.get("html_url"),
+    }
+
+
+def _environment_summary(environment: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": environment.get("id"),
+        "name": environment.get("name"),
+        "url": environment.get("html_url"),
+        "created_at": environment.get("created_at"),
+        "updated_at": environment.get("updated_at"),
+        "protection_rules": len(environment.get("protection_rules") or []),
+        "deployment_branch_policy": environment.get("deployment_branch_policy"),
+    }
+
+
+def _deployment_summary(deployment: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": deployment.get("id"),
+        "sha": deployment.get("sha"),
+        "ref": deployment.get("ref"),
+        "task": deployment.get("task"),
+        "environment": deployment.get("environment"),
+        "description": deployment.get("description"),
+        "state": deployment.get("state"),
+        "transient_environment": deployment.get("transient_environment"),
+        "production_environment": deployment.get("production_environment"),
+        "created_at": deployment.get("created_at"),
+        "updated_at": deployment.get("updated_at"),
+        "url": deployment.get("url"),
+    }
+
+
+def _release_summary(release: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": release.get("id"),
+        "tag_name": release.get("tag_name"),
+        "target_commitish": release.get("target_commitish"),
+        "name": release.get("name"),
+        "draft": release.get("draft"),
+        "prerelease": release.get("prerelease"),
+        "created_at": release.get("created_at"),
+        "published_at": release.get("published_at"),
+        "url": release.get("html_url"),
+        "assets": len(release.get("assets") or []),
+    }
+
+
+def _artifact_summary(artifact: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": artifact.get("id"),
+        "name": artifact.get("name"),
+        "size_in_bytes": artifact.get("size_in_bytes"),
+        "expired": artifact.get("expired"),
+        "created_at": artifact.get("created_at"),
+        "expires_at": artifact.get("expires_at"),
+        "archive_download_url": artifact.get("archive_download_url"),
     }
 
 
@@ -261,7 +399,17 @@ async def list_workflows(params: ListWorkflowsInput) -> dict:
     """List the repository's GitHub Actions workflows (id, name, file, state)."""
     try:
         await get_service_factory().ensure_auth()
-        data = await _get(f"{_repo_path(params)}/actions/workflows", {"per_page": params.limit})
+        repo_path = _repo_path(params)
+
+        async def load_workflows() -> dict:
+            return await _get(f"{repo_path}/actions/workflows", {"per_page": params.limit})
+
+        ttl = get_settings().resource_cache_ttl_seconds
+        key = await scoped_key(get_service_factory(), "workflows", repo_path, str(params.limit))
+        if ttl and key is not None:
+            data, _cache_hit = await get_or_load(key, ttl_seconds=ttl, loader=load_workflows)
+        else:
+            data = await load_workflows()
         workflows = [
             {
                 "id": wf.get("id"),
@@ -471,6 +619,141 @@ async def rerun_workflow_run(params: RerunWorkflowRunInput) -> dict:
         return handle_tool_error(exc, context="Re-run workflow failed")
 
 
+async def cancel_workflow_run(params: CancelWorkflowRunInput) -> dict:
+    """Cancel a workflow run that is queued or in progress."""
+    try:
+        await _post(f"{_repo_path(params)}/actions/runs/{params.run_id}/cancel")
+        return ToolSuccess(
+            data={
+                "run_id": params.run_id,
+                "cancellation_requested": True,
+                "message": "Cancellation accepted by GitHub; poll get_workflow_run for the final state.",
+            }
+        ).model_dump()
+    except CLIError as exc:
+        return _cli_error("cancel_workflow_run", exc, _WRITE_HINT)
+    except Exception as exc:
+        return handle_tool_error(exc, context="Cancel workflow run failed")
+
+
+async def list_workflow_artifacts(params: ListWorkflowArtifactsInput) -> dict:
+    """List artifacts produced by one workflow run (metadata and download URLs)."""
+    try:
+        data = await _get(
+            f"{_repo_path(params)}/actions/runs/{params.run_id}/artifacts",
+            {"per_page": params.limit},
+        )
+        artifacts = [_artifact_summary(a) for a in data.get("artifacts", [])[: params.limit]]
+        return ToolSuccess(
+            data={"run_id": params.run_id, "total": data.get("total_count", len(artifacts)), "artifacts": artifacts}
+        ).model_dump()
+    except CLIError as exc:
+        return _cli_error("list_workflow_artifacts", exc, _PERMISSION_HINT)
+    except Exception as exc:
+        return handle_tool_error(exc, context="List workflow artifacts failed")
+
+
+async def list_environments(params: ListEnvironmentsInput) -> dict:
+    """List deployment environments and summarized protection-rule counts."""
+    try:
+        data = await _get(f"{_repo_path(params)}/environments", {"per_page": params.limit})
+        environments = [_environment_summary(e) for e in data.get("environments", [])[: params.limit]]
+        return ToolSuccess(
+            data={"total": data.get("total_count", len(environments)), "environments": environments}
+        ).model_dump()
+    except CLIError as exc:
+        return _cli_error("list_environments", exc, _PERMISSION_HINT)
+    except Exception as exc:
+        return handle_tool_error(exc, context="List environments failed")
+
+
+async def list_deployments(params: ListDeploymentsInput) -> dict:
+    """List deployments, optionally filtered by environment, ref, or SHA."""
+    try:
+        data = await _get(
+            f"{_repo_path(params)}/deployments",
+            {
+                "environment": params.environment,
+                "ref": params.ref,
+                "sha": params.sha,
+                "per_page": params.limit,
+            },
+        )
+        deployments = [_deployment_summary(d) for d in (data if isinstance(data, list) else [])[: params.limit]]
+        return ToolSuccess(data={"total": len(deployments), "deployments": deployments}).model_dump()
+    except CLIError as exc:
+        return _cli_error("list_deployments", exc, _PERMISSION_HINT)
+    except Exception as exc:
+        return handle_tool_error(exc, context="List deployments failed")
+
+
+async def list_releases(params: ListReleasesInput) -> dict:
+    """List repository releases with tag, publication state, and asset counts."""
+    try:
+        data = await _get(f"{_repo_path(params)}/releases", {"per_page": params.limit})
+        releases = [_release_summary(r) for r in (data if isinstance(data, list) else [])[: params.limit]]
+        return ToolSuccess(data={"total": len(releases), "releases": releases}).model_dump()
+    except CLIError as exc:
+        return _cli_error("list_releases", exc, _PERMISSION_HINT)
+    except Exception as exc:
+        return handle_tool_error(exc, context="List releases failed")
+
+
+async def create_release(params: CreateReleaseInput) -> dict:
+    """Create a GitHub release for a tag, optionally as draft/prerelease."""
+    try:
+        body: dict[str, Any] = {
+            "tag_name": params.tag_name,
+            "body": params.body,
+            "draft": params.draft,
+            "prerelease": params.prerelease,
+            "generate_release_notes": params.generate_release_notes,
+        }
+        if params.target_commitish:
+            body["target_commitish"] = params.target_commitish
+        if params.name:
+            body["name"] = params.name
+        release = await _post_json(f"{_repo_path(params)}/releases", body)
+        if not release.get("id") or not release.get("html_url"):
+            return build_error_response(
+                error_type="internal",
+                message="GitHub returned an incomplete release response; reconcile with list_releases before retrying.",
+                suggestion="Release creation is not safely replayable after an ambiguous transport response.",
+            )
+        return ToolSuccess(data={"release": _release_summary(release)}).model_dump()
+    except CLIError as exc:
+        return _cli_error("create_release", exc, _WRITE_HINT)
+    except Exception as exc:
+        return handle_tool_error(exc, context="Create release failed")
+
+
+async def create_deployment(params: CreateDeploymentInput) -> dict:
+    """Create a deployment for a validated ref without bypassing required contexts."""
+    try:
+        body: dict[str, Any] = {
+            "ref": params.ref,
+            "environment": params.environment,
+            "task": params.task,
+            "description": params.description,
+            "auto_merge": params.auto_merge,
+            "transient_environment": params.transient_environment,
+        }
+        if params.production_environment is not None:
+            body["production_environment"] = params.production_environment
+        deployment = await _post_json(f"{_repo_path(params)}/deployments", body)
+        if not deployment.get("id"):
+            return build_error_response(
+                error_type="internal",
+                message="GitHub returned an incomplete deployment response; reconcile with list_deployments before retrying.",
+                suggestion="Deployment creation is not safely replayable after an ambiguous transport response.",
+            )
+        return ToolSuccess(data={"deployment": _deployment_summary(deployment)}).model_dump()
+    except CLIError as exc:
+        return _cli_error("create_deployment", exc, _WRITE_HINT)
+    except Exception as exc:
+        return handle_tool_error(exc, context="Create deployment failed")
+
+
 async def dispatch_workflow(params: DispatchWorkflowInput) -> dict:
     """Trigger a workflow_dispatch run of a workflow on a branch or tag."""
     try:
@@ -590,6 +873,13 @@ CI_TOOLS = [
     get_pr_checks,
     get_job_logs,
     rerun_workflow_run,
+    cancel_workflow_run,
+    list_workflow_artifacts,
+    list_environments,
+    list_deployments,
+    create_deployment,
+    list_releases,
+    create_release,
     dispatch_workflow,
     merge_pull_request,
 ]

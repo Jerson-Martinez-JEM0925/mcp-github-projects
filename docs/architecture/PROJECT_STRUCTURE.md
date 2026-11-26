@@ -6,7 +6,7 @@ that a contributor (human or LLM) can place a new tool, module, or test correctl
 the first try, without reverse-engineering the layout.
 
 > **Scope:** organization and naming only. This document describes *structure*, not
-> behavior. The set of client-facing MCP tool names and the total tool count (**106**)
+> behavior. The set of client-facing MCP tool names and the total tool count (**177**)
 > are an external contract — see [Invariants](#invariants).
 
 ---
@@ -30,11 +30,14 @@ mcp-github-projects/
 │   ├── exceptions.py        # Typed exception hierarchy
 │   ├── hardening.py         # Input parsing, redaction, atomic writes
 │   ├── profiles.py          # Named env-profile loading
+│   ├── observability.py     # Optional metadata-only OpenTelemetry spans
 │   └── capabilities.py      # Tool → required-capability mapping (contract-checked)
 │
 ├── clients/                 # Thin transport wrappers over external systems
-│   ├── graphql_client.py    # GitHub GraphQL v4 client (retry, context)
-│   ├── gh_cli_client.py     # `gh` CLI subprocess wrapper
+│   ├── graphql_client.py    # Pooled GitHub GraphQL v4 client (retry, context)
+│   ├── rest_client.py       # Pooled direct REST transport
+│   ├── gh_cli_client.py     # REST fast paths plus `gh` CLI subprocess fallback
+│   ├── resource_cache.py    # Short-lived stable-resource cache
 │   └── cache_manager.py     # On-disk project-metadata cache (per-target isolation)
 │
 ├── graphql/                 # GraphQL documents + response helpers (no I/O)
@@ -115,7 +118,7 @@ Rules:
 
 ## 3. Tool Taxonomy
 
-The ~105 tools group into these categories. A tool's category determines its
+The 177 tools group into these categories. A tool's category determines its
 `tools/<category>/` home and the doc section it belongs to.
 
 | Category | `tools/` home | Responsibility | Representative tools |
@@ -127,9 +130,9 @@ The ~105 tools group into these categories. A tool's category determines its
 | **fields** | `tools/fields/` | Field/estimate/label/milestone writes | `set_estimate`, `create_label`, `list_labels`, `create_milestone`, `close_milestone`, `list_milestones` |
 | **planning** | `tools/planning/` | Sprints, workflows, release notes, epics | `sprint_planning`, `generate_release_notes`, `create_epic`, `daily_standup`, `sprint_review`, `close_sprint`, `triage_new_issues` |
 | **discovery/bulk** | `tools/bulk/` | Batch operations + search across many items | `bulk_close_issues`, `bulk_update_items`, `search_issues`, `bulk_assign` |
-| **meta** | `tools/meta/` | Reports/stats, PR-create helpers, and the 60-tool capability suite | `get_project_stats`, `get_sprint_summary`, `create_pull_request`, `update_pull_request`, `link_pull_request`, plus `capability_suite.CAPABILITY_TOOL_NAMES` |
+| **meta** | `tools/meta/` | Reports/stats, PR-create helpers, and the 62-tool capability suite | `get_project_stats`, `get_sprint_summary`, `create_pull_request`, `update_pull_request`, `link_pull_request`, plus `capability_suite.CAPABILITY_TOOL_NAMES` |
 
-> The **capability suite** (`tools/meta/capability_suite.py`) holds 60 read/analysis/
+> The **capability suite** (`tools/meta/capability_suite.py`) holds 62 read/analysis/
 > text-processing tools registered via `CAPABILITY_TOOL_NAMES`. It is a category of its
 > own because those tools are declared as a batch list rather than one function per
 > module — see the recipe below for extending it.
@@ -215,7 +218,7 @@ prefix, via `RequestContextFilter`) and every error envelope
 (`ToolError.correlation_id`). A user can quote the ID from an error and find the
 matching log lines. It is unrelated to GitHub's own `request_id`.
 
-### Adding to the capability suite (60-tool batch)
+### Adding to the capability suite (62-tool batch)
 
 1. Define the `async def` in `tools/meta/capability_suite.py`.
 2. Append its name to `CAPABILITY_TOOL_NAMES` (keep the count assertion in

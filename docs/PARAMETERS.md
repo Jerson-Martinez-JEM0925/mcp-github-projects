@@ -44,6 +44,7 @@ Lists project board items with optional field-based filtering. Returns up to 200
 | `milestone` | `string` | Optional | `null` | Filter by milestone title (exact match against milestone name) |
 | `due_date` | `string` | Optional | `null` | ISO 8601 date string in YYYY-MM-DD format for date comparison filtering |
 | `due_date_op` | `string` | Optional | `null` | Comparison operator for due_date: "before", "after", or "exact" |
+| `include_body` | `boolean` | Optional | `false` | Include full issue/PR bodies in the response. Keeping it false avoids large GraphQL payloads and reduces LLM context use |
 
 ### Valid Status Values
 
@@ -494,8 +495,10 @@ These values apply across all tools and are configured at the server level.
 | Repository | (configured) | Repository from GH_PROJECT_REPO_NAME |
 | Project number | (configured) | GitHub Project V2 number from GH_PROJECT_PROJECT_NUMBER |
 | Access level | `write` (`read`/`write`/`full`) | Which tools are exposed, from **`MCP_ACCESS_LEVEL`** (MCP_-prefixed). `read` = read-only tools; `write` = + create/update/close/archive; `full` = + permanent-delete tools (each needs `confirm:true`) |
+| Tool profile | `full` (`full`/`developer`/`devops`/`project_manager`/`read_only`/`commenter`) | From **`MCP_TOOL_PROFILE`**. Narrows the visible catalog by role/capability. It can only reduce what `MCP_ACCESS_LEVEL` permits; it never grants additional writes or deletes |
 | Scope lock | `false` | From `GH_PROJECT_SCOPE_LOCK`. When `true`, every tool is confined to the configured org/repo/project; foreign targets are refused with a typed error before any mutation |
-| Timeout | `10s` (1–120s) | Maximum time for a single API request before timeout error |
+| Startup auth validation | `true` | From `GH_PROJECT_VALIDATE_AUTH_ON_STARTUP`; validates env credentials before accepting stdio MCP traffic. Disable only for controlled fast-start deployments |
+| Timeout | `30s` (1–120s) | Maximum time for a single API request before timeout error |
 | Retry attempts | `1` (0–5) | Read timeouts only; mutations are never retried |
 | Retry delay | `2.0s` (0–60s) | Initial delay before exponential read retry |
 | Cache TTL | `24h` (1–720h) | Duration for which discovered metadata remains valid locally |
@@ -503,6 +506,14 @@ These values apply across all tools and are configured at the server level.
 | Page size | `100` (1–100) | Maximum GraphQL page size used by list operations |
 | Max items | `200` (1–1,000) | Maximum number of items returned by list operations |
 | CLI output limit | `1,000,000` chars | Maximum gh CLI output retained in memory |
+| Concurrency limit | `5` (1–20) | From `GH_PROJECT_MAX_CONCURRENT_REQUESTS`; bounds independent GitHub operations inside bulk/update tools |
+| Resource metadata cache | `300s` (0–86,400) | From `GH_PROJECT_RESOURCE_CACHE_TTL_SECONDS`; short-lived in-process cache for stable labels, milestones and workflow definitions. Mutations invalidate the affected resource kind; zero disables it |
+| HTTP body limit | `1,000,000` bytes | From `MCP_HTTP_MAX_BODY_BYTES`; rejects oversized Streamable HTTP MCP requests |
+| HTTP rate limit | `240/min` | From `MCP_HTTP_RATE_LIMIT_PER_MINUTE`; per-client budget keyed by token fingerprint or remote address |
+| HTTP token validation | `true` | From `MCP_HTTP_VALIDATE_TOKENS`; validates bearers before exposing MCP metadata, caching verdicts by fingerprint |
+| HTTP auth cache | `60s` | From `MCP_HTTP_AUTH_CACHE_TTL_SECONDS`; positive validation TTL, with shorter negative caching |
+| Log level/format | `WARNING`/`text` | `MCP_LOG_LEVEL` and `MCP_LOG_FORMAT`; `DEBUG` enables per-tool latency logs, `json` emits one structured object per line |
+| OpenTelemetry tracing | disabled | `MCP_OTEL_ENABLED`, `MCP_OTEL_SERVICE_NAME`, `MCP_OTEL_EXPORTER_OTLP_ENDPOINT`; spans contain only tool/access/correlation metadata, never arguments or secrets |
 | Estimate range | `0.25–9999` | Valid numeric range for time estimates in hours |
 | Estimate granularity | `0.25` | Minimum increment for estimate values (quarter-hour) |
 

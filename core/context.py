@@ -30,6 +30,8 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
+from core.observability import tool_span
+
 _CURRENT: ContextVar[RequestContext | None] = ContextVar("mcp_request_context", default=None)
 
 
@@ -62,7 +64,9 @@ def request_scope(tool: str) -> Iterator[RequestContext]:
         _CURRENT.reset(token)
 
 
-def with_request_context(fn: Callable[..., Any], tool: str | None = None) -> Callable[..., Any]:
+def with_request_context(
+    fn: Callable[..., Any], tool: str | None = None, access_tier: str = "unknown"
+) -> Callable[..., Any]:
     """Wrap a tool function so each call runs inside a request scope.
 
     ``functools.wraps`` keeps ``__name__``, the docstring, annotations and
@@ -77,20 +81,22 @@ def with_request_context(fn: Callable[..., Any], tool: str | None = None) -> Cal
         @functools.wraps(fn)
         async def _async_wrapper(*args: Any, **kwargs: Any) -> Any:
             with request_scope(name) as ctx:
-                try:
-                    return await fn(*args, **kwargs)
-                finally:
-                    logger.debug("tool=%s finished in %dms", name, ctx.elapsed_ms())
+                with tool_span(name, correlation_id=ctx.correlation_id, access_tier=access_tier):
+                    try:
+                        return await fn(*args, **kwargs)
+                    finally:
+                        logger.debug("tool=%s finished in %dms", name, ctx.elapsed_ms())
 
         return _async_wrapper
 
     @functools.wraps(fn)
     def _sync_wrapper(*args: Any, **kwargs: Any) -> Any:
         with request_scope(name) as ctx:
-            try:
-                return fn(*args, **kwargs)
-            finally:
-                logger.debug("tool=%s finished in %dms", name, ctx.elapsed_ms())
+            with tool_span(name, correlation_id=ctx.correlation_id, access_tier=access_tier):
+                try:
+                    return fn(*args, **kwargs)
+                finally:
+                    logger.debug("tool=%s finished in %dms", name, ctx.elapsed_ms())
 
     return _sync_wrapper
 

@@ -1,7 +1,5 @@
 """Tests for multi-target profile system and credential isolation."""
 
-import os
-import tempfile
 from pathlib import Path
 
 import pytest

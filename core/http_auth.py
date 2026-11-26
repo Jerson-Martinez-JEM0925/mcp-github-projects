@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import hmac
+import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -28,11 +30,23 @@ class RequestBearerAuthMiddleware:
         protected_path: str,
         client_key: str = "",
         allowed_prefixes: tuple[str, ...] = (),
+        max_body_bytes: int = 1_000_000,
+        rate_limit_per_minute: int = 240,
+        validate_tokens: bool = False,
+        auth_cache_ttl_seconds: int = 60,
+        owner_login: str = "",
     ) -> None:
         self.app = app
         self.protected_path = protected_path
         self.client_key = client_key
         self.allowed_prefixes = allowed_prefixes
+        self.max_body_bytes = max_body_bytes
+        self.rate_limit_per_minute = rate_limit_per_minute
+        self.validate_tokens = validate_tokens
+        self.auth_cache_ttl_seconds = auth_cache_ttl_seconds
+        self.owner_login = owner_login
+        self._rate_windows: dict[str, tuple[float, int]] = {}
+        self._token_validation: dict[str, tuple[float, bool]] = {}
 
     async def __call__(
         self,
@@ -48,20 +62,104 @@ class RequestBearerAuthMiddleware:
             key.lower(): value
             for key, value in scope.get("headers", [])
         }
+        content_length = headers.get(b"content-length", b"").decode("ascii", errors="ignore")
+        if content_length.isdigit() and int(content_length) > self.max_body_bytes:
+            return await self._json_error(scope, receive, send, 413, "payload_too_large")
+
+        token = self._bearer_token(headers.get(b"authorization", b""))
+        client_host = ""
+        client = scope.get("client")
+        if isinstance(client, (tuple, list)) and client:
+            client_host = str(client[0])
+        rate_key = client_host or "unknown"
+        if token:
+            rate_key = "token:" + hashlib.sha256(token.encode("utf-8")).hexdigest()
+        if not self._consume_rate_budget(rate_key):
+            return await self._json_error(scope, receive, send, 429, "rate_limited")
+
         if self.client_key and not hmac.compare_digest(
             self.client_key,
             headers.get(b"x-mcp-client-key", b"").decode("utf-8", errors="replace"),
         ):
             return await self._unauthorized(scope, receive, send)
 
-        token = self._bearer_token(headers.get(b"authorization", b""))
         if token is None:
             return await self._unauthorized(scope, receive, send)
         if self.allowed_prefixes and not token.startswith(self.allowed_prefixes):
             return await self._unauthorized(scope, receive, send)
+        if self.validate_tokens and not await self._token_is_valid(token):
+            return await self._unauthorized(scope, receive, send)
+        if self.owner_login:
+            try:
+                from services.owner_type_resolver import prime_owner_type_cache
+
+                await prime_owner_type_cache(self.owner_login, token)
+            except Exception:  # noqa: BLE001 - owner detection remains best-effort
+                pass
 
         with request_token_scope(token):
             return await self.app(scope, receive, send)
+
+    async def _token_is_valid(self, token: str) -> bool:
+        """Validate a bearer with GitHub, caching only its fingerprint and verdict.
+
+        Positive results are cached for the configured TTL. Negative results use
+        a shorter TTL so a newly provisioned token or transient GitHub failure
+        does not remain pinned for the full positive-cache window. The token
+        itself is never used as a dictionary key or logged.
+        """
+        fingerprint = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        now = time.monotonic()
+        cached = self._token_validation.get(fingerprint)
+        if cached is not None and now < cached[0]:
+            return cached[1]
+
+        valid = False
+        try:
+            from clients.rest_client import GitHubRESTClient
+
+            payload = await GitHubRESTClient(token=token).request("GET", "/user")
+            valid = isinstance(payload, dict) and bool(payload.get("login"))
+        except Exception:  # noqa: BLE001 - fail closed without exposing detail
+            valid = False
+
+        ttl = self.auth_cache_ttl_seconds if valid else min(10, self.auth_cache_ttl_seconds)
+        self._token_validation[fingerprint] = (now + ttl, valid)
+        if len(self._token_validation) > 10_000:
+            self._token_validation = {
+                key: value for key, value in self._token_validation.items()
+                if value[0] > now
+            }
+        return valid
+
+    def _consume_rate_budget(self, key: str) -> bool:
+        """Consume one fixed-window request slot for a client/token fingerprint."""
+        now = time.monotonic()
+        if len(self._rate_windows) > 10_000:
+            self._rate_windows = {
+                name: window for name, window in self._rate_windows.items()
+                if now - window[0] < 60.0
+            }
+        started, count = self._rate_windows.get(key, (now, 0))
+        if now - started >= 60.0:
+            started, count = now, 0
+        if count >= self.rate_limit_per_minute:
+            self._rate_windows[key] = (started, count)
+            return False
+        self._rate_windows[key] = (started, count + 1)
+        return True
+
+    @staticmethod
+    async def _json_error(
+        scope: dict[str, Any],
+        receive: Callable[..., Awaitable[Any]],
+        send: Callable[..., Awaitable[Any]],
+        status_code: int,
+        error: str,
+    ) -> None:
+        """Return a small token-free JSON error response."""
+        response = JSONResponse({"error": error}, status_code=status_code)
+        await response(scope, receive, send)
 
     @staticmethod
     def _bearer_token(raw_header: bytes) -> str | None:

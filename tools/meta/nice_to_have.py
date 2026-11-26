@@ -718,7 +718,6 @@ async def create_pull_request(params: CreatePullRequestInput) -> dict:
     """
     try:
         await get_service_factory().ensure_auth()
-        settings = get_settings()
         repo = resolve_repository_target(params.repository, owner=params.owner, repo=params.repo)
         gh_client = get_service_factory().gh()
 

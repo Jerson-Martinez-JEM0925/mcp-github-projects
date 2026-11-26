@@ -32,6 +32,7 @@ import logging
 from pydantic import BaseModel, Field
 
 from clients.gh_cli_client import CLIError
+from clients.resource_cache import invalidate
 from core.access import resolve_repository
 from core.error_handling import build_error_response, handle_tool_error
 from graphql.mutations import DELETE_ISSUE_MUTATION, DELETE_PROJECT_ITEM_MUTATION
@@ -320,6 +321,7 @@ async def delete_label(params: DeleteLabelInput) -> dict:
                 )
             raise
 
+        invalidate("labels")
         return ToolSuccess(
             data={
                 "name": params.name,
@@ -382,6 +384,7 @@ async def delete_milestone(params: DeleteMilestoneInput) -> dict:
             "api", "--method", "DELETE",
             f"repos/{repo}/milestones/{target['number']}",
         ])
+        invalidate("milestones")
 
         return ToolSuccess(
             data={

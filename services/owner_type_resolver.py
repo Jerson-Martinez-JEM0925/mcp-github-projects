@@ -20,6 +20,7 @@ Security: the token value is never logged or included in any output.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import subprocess  # nosec B404 - used only for the pinned `gh api graphql` call
@@ -114,7 +115,17 @@ def resolve_owner_type_sync(
     if cached is not None:
         return cached
 
-    detected = _detect_via_gh(login)
+    try:
+        asyncio.get_running_loop()
+        inside_event_loop = True
+    except RuntimeError:
+        inside_event_loop = False
+
+    # Never block an active event loop with subprocess-based detection. Server
+    # startup primes the cache asynchronously in env mode; request-scoped HTTP
+    # deployments should set GH_PROJECT_OWNER_TYPE explicitly when they cannot
+    # prime the target owner.
+    detected = None if inside_event_loop else _detect_via_gh(login)
     if detected is not None:
         logger.info("Auto-detected owner type for '%s': %s", login, detected)
         _CACHE[key] = detected
@@ -189,6 +200,21 @@ async def resolve_owner_type_via_graphql(
         default,
     )
     return default
+
+
+async def prime_owner_type_cache(login: str, token: str) -> OwnerType | None:
+    """Resolve and cache an owner type asynchronously during server startup.
+
+    Returns the detected type, or ``None`` when detection is not possible.
+    The token is used only for this request and is never logged.
+    """
+    if not login or login.lower() in _CACHE:
+        return _CACHE.get(login.lower())
+    from clients.graphql_client import GraphQLClient
+
+    client = GraphQLClient(token=token)
+    detected = await resolve_owner_type_via_graphql(login, client, default="organization")
+    return detected if login.lower() in _CACHE else None
 
 
 def clear_cache() -> None:

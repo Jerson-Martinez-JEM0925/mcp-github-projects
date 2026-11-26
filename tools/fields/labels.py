@@ -11,7 +11,9 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from clients.gh_cli_client import CLIError
+from clients.resource_cache import cache_key, get_or_load, invalidate
 from core.access import resolve_repository
+from core.config import get_settings
 from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
 from core.factory import get_service_factory
@@ -44,6 +46,16 @@ class ListLabelsInput(_RepoTarget):
     limit: int = Field(default=50, description="Max labels to return")
 
 
+async def _labels_cache_key(repo: str, limit: int):
+    """Build a credential-scoped cache key, or None when auth is test-injected."""
+    factory = get_service_factory()
+    try:
+        token = await factory.token()
+    except (Exception, SystemExit):  # noqa: BLE001 - injected fake transports need no credential
+        return None
+    return cache_key("labels", repo, token, str(limit))
+
+
 async def create_label(params: CreateLabelInput) -> dict:
     """Create a new label in the repository.
 
@@ -67,6 +79,7 @@ async def create_label(params: CreateLabelInput) -> dict:
             args.extend(["--description", params.description])
 
         await gh_client.run(args)
+        invalidate("labels")
 
         return ToolSuccess(
             data={
@@ -102,11 +115,19 @@ async def list_labels(params: ListLabelsInput) -> dict:
         repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
 
-        result = await gh_client.run([
-            "label", "list", "--repo", repo, "--limit", str(params.limit),
-            "--json", "name,color,description",
-        ])
-        labels = json.loads(result.stdout)
+        async def load_labels() -> list[dict]:
+            result = await gh_client.run([
+                "label", "list", "--repo", repo, "--limit", str(params.limit),
+                "--json", "name,color,description",
+            ])
+            return json.loads(result.stdout)
+
+        ttl = get_settings().resource_cache_ttl_seconds
+        key = await _labels_cache_key(repo, params.limit)
+        if ttl and key is not None:
+            labels, _cache_hit = await get_or_load(key, ttl_seconds=ttl, loader=load_labels)
+        else:
+            labels = await load_labels()
 
         return ToolSuccess(
             data={"labels": labels, "count": len(labels)},

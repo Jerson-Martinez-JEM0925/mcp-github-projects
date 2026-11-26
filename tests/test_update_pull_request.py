@@ -10,7 +10,6 @@ The GHCLIClient and token resolution are mocked so no network/gh call is made.
 """
 
 import json
-import sys
 from unittest.mock import AsyncMock, patch
 
 import pytest

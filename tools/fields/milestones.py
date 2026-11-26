@@ -12,6 +12,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from clients.gh_cli_client import CLIError
+from clients.resource_cache import get_or_load, invalidate, scoped_key
 from core.access import enforce_scope, resolve_repository
 from core.config import get_settings
 from core.error_handling import build_error_response, handle_tool_error
@@ -141,6 +142,7 @@ async def update_milestone(params: UpdateMilestoneInput) -> dict:
 
         result = await gh_client.run(api_args)
         data = json.loads(result.stdout)
+        invalidate("milestones")
         return ToolSuccess(
             data={
                 "number": data.get("number", params.milestone_number),
@@ -198,6 +200,7 @@ async def create_milestone(params: CreateMilestoneInput) -> dict:
 
         result = await gh_client.run(api_args)
         data = json.loads(result.stdout)
+        invalidate("milestones")
 
         return ToolSuccess(
             data={
@@ -262,6 +265,7 @@ async def close_milestone(params: CloseMilestoneInput) -> dict:
             "api", f"repos/{repo}/milestones/{target['number']}",
             "--method", "PATCH", "-f", "state=closed",
         ])
+        invalidate("milestones")
 
         return ToolSuccess(
             data={
@@ -298,10 +302,18 @@ async def list_milestones(params: ListMilestonesInput) -> dict:
         repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
 
-        result = await gh_client.run([
-            "api", f"repos/{repo}/milestones?state={params.state}&per_page=100&sort=due_on",
-        ])
-        milestones = json.loads(result.stdout)
+        async def load_milestones() -> list[dict]:
+            result = await gh_client.run([
+                "api", f"repos/{repo}/milestones?state={params.state}&per_page=100&sort=due_on",
+            ])
+            return json.loads(result.stdout)
+
+        ttl = get_settings().resource_cache_ttl_seconds
+        key = await scoped_key(get_service_factory(), "milestones", repo, params.state)
+        if ttl and key is not None:
+            milestones, _cache_hit = await get_or_load(key, ttl_seconds=ttl, loader=load_milestones)
+        else:
+            milestones = await load_milestones()
 
         items = []
         for ms in milestones:

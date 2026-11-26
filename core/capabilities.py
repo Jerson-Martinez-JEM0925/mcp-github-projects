@@ -193,6 +193,13 @@ TOOL_CAPABILITIES: dict[str, FrozenSet[Capability]] = {
     "get_pr_checks": frozenset({AR, PRR}),
     "get_job_logs": frozenset({AR}),
     "rerun_workflow_run": frozenset({AW}),
+    "cancel_workflow_run": frozenset({AW}),
+    "list_workflow_artifacts": frozenset({AR}),
+    "list_environments": frozenset({AR}),
+    "list_deployments": frozenset({AR}),
+    "create_deployment": frozenset({AW}),
+    "list_releases": frozenset({CTR}),
+    "create_release": frozenset({CTW}),
     "dispatch_workflow": frozenset({AW}),
     "merge_pull_request": frozenset({PRW, PRR, AR}),
 
@@ -279,10 +286,12 @@ TOOL_CAPABILITIES: dict[str, FrozenSet[Capability]] = {
 # ---------------------------------------------------------------------------
 
 PROFILES: dict[str, FrozenSet[Capability]] = {
-    "read_only": frozenset({IR, CR, PR, PLR, LR, PRR, CTR}),
+    "read_only": frozenset({IR, CR, PR, PLR, LR, PRR, AR, CTR}),
     "commenter": frozenset({IR, CR, CW}),
-    "project_manager": frozenset(Capability),
-    "developer": frozenset({IR, IW, CR, CW, PR, PW, PLR, LR, PRR, PRW, CTR, CTW}),
+    "developer": frozenset({IR, IW, CR, CW, PR, PW, PLR, LR, PRR, PRW, AR, CTR, CTW}),
+    "devops": frozenset({IR, IW, CR, CW, PR, PLR, LR, PRR, PRW, AR, AW, CTR, CTW}),
+    "project_manager": frozenset({IR, IW, CR, CW, PR, PW, PLR, PLW, LR, LW, PRR, AR, CTR}),
+    "full": frozenset(Capability),
 }
 
 

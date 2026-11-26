@@ -7,7 +7,7 @@ constraints before issuing the GraphQL mutation.
 
 import os
 import sys
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -18,7 +18,7 @@ os.environ.setdefault("GH_PROJECT_PROJECT_NUMBER", "1")
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import GitHubProjectSettings, get_settings
+from config import get_settings
 from exceptions import ValidationError
 from services.field_service import FieldService
 

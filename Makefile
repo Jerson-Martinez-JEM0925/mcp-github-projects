@@ -15,6 +15,10 @@
 #   make shell      — Drop into a shell inside the MCP container
 #   make preflight  — Check host prerequisites
 #   make secrets    — Scan for leaked credentials
+#   make lint       — Ruff correctness lint
+#   make typecheck  — mypy hardened core/client boundary
+#   make security   — Bandit + pip-audit
+#   make lock       — Regenerate hash-pinned dependency locks
 #   make clean      — Remove built images
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -43,6 +47,13 @@ build: ## Build the MCP Docker image
 rebuild: ## Force rebuild without cache
 	docker build -t $(IMAGE) --no-cache .
 
+.PHONY: lock
+lock: ## Regenerate hash-pinned runtime/dev dependency locks
+	@docker run --rm -u root \
+		-v "$(CURDIR):/app" -w /app \
+		python:3.12-slim@sha256:191083cdf6c7bda8c76158983163ead5d5cf7b77cf3033e805bb0f5296f51b4b \
+		bash scripts/generate_locks.sh
+
 # ── Verification ─────────────────────────────────────────────────────────────
 .PHONY: verify
 verify: _check_env ## Validate auth, scopes, and target configuration
@@ -52,7 +63,7 @@ verify: _check_env ## Validate auth, scopes, and target configuration
 test: _check_env ## Run unit tests inside Docker
 	@docker build --build-arg INSTALL_TEST_DEPS=true -t $(TEST_IMAGE) .
 	@docker run --rm $(TEST_IMAGE) \
-		python3 -m pytest tests/ -v --tb=short --ignore=tests/test_contracts.py
+		python3 -m pytest tests/ -v --tb=short
 
 .PHONY: tools
 tools: _check_env ## Count registered MCP tools (must be >= 100)
@@ -62,8 +73,27 @@ tools: _check_env ## Count registered MCP tools (must be >= 100)
 syntax: ## Check Python syntax (ast.parse all .py files)
 	@$(DOCKER_RUN) python3 scripts/check_syntax.py
 
+.PHONY: lint
+lint: ## Run Ruff correctness lint in the test image
+	@docker build --build-arg INSTALL_TEST_DEPS=true -t $(TEST_IMAGE) .
+	@docker run --rm $(TEST_IMAGE) ruff check --no-cache .
+
+.PHONY: typecheck
+typecheck: ## Run mypy on the hardened core/client boundary
+	@docker build --build-arg INSTALL_TEST_DEPS=true -t $(TEST_IMAGE) .
+	@docker run --rm $(TEST_IMAGE) mypy \
+		clients/graphql_client.py clients/rest_client.py clients/resource_cache.py \
+		clients/gh_cli_client.py core/config.py core/http_auth.py core/observability.py \
+		core/context.py
+
+.PHONY: security
+security: ## Run Bandit and pip-audit in the test image
+	@docker build --build-arg INSTALL_TEST_DEPS=true -t $(TEST_IMAGE) .
+	@docker run --rm $(TEST_IMAGE) bandit -r . -x ./tests,./docs,./profiles -ll -ii
+	@docker run --rm $(TEST_IMAGE) pip-audit --progress-spinner off
+
 .PHONY: validate
-validate: build syntax test tools secrets ## Full validation (mirrors CI pipeline)
+validate: build syntax test tools secrets lint typecheck security ## Full validation (mirrors CI pipeline)
 	@echo ""
 	@echo "═══ All checks passed. Safe to push. ═══"
 

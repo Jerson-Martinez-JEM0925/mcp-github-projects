@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 
@@ -27,6 +26,7 @@ def _configure_target(monkeypatch: pytest.MonkeyPatch, **extra: str) -> None:
     monkeypatch.setenv("GH_PROJECT_ORG_NAME", "ExampleOrg")
     monkeypatch.setenv("GH_PROJECT_REPO_NAME", "ExampleRepo")
     monkeypatch.setenv("GH_PROJECT_PROJECT_NUMBER", "1")
+    monkeypatch.setenv("GH_PROJECT_OWNER_TYPE", "organization")
     for key in (
         "MCP_TRANSPORT",
         "MCP_AUTH_MODE",
@@ -157,3 +157,131 @@ def test_empty_prefix_override_disables_default_filter(monkeypatch: pytest.Monke
         MCP_ALLOWED_TOKEN_PREFIXES="",
     )
     assert GitHubProjectSettings().token_prefixes() == ()
+
+
+def test_http_bearer_validation_is_cached_by_fingerprint(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Validated HTTP metadata exposure does not re-call GitHub for every request."""
+    _configure_target(monkeypatch, MCP_TRANSPORT="streamable-http")
+    from clients.rest_client import GitHubRESTClient
+
+    calls: list[str] = []
+
+    async def fake_request(self, method: str, path: str, **kwargs):
+        calls.append(path)
+        return {"login": "octocat"}
+
+    monkeypatch.setattr(GitHubRESTClient, "request", fake_request)
+
+    async def echo_token(_request):
+        token = await resolve_token()
+        return JSONResponse({"token": token})
+
+    app = Starlette(routes=[Route("/mcp", echo_token, methods=["POST"])])
+    app.add_middleware(
+        RequestBearerAuthMiddleware,
+        protected_path="/mcp",
+        client_key="client-secret",
+        allowed_prefixes=("ghu_",),
+        validate_tokens=True,
+        auth_cache_ttl_seconds=60,
+    )
+
+    async def exercise() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as client:
+            headers = {
+                "Authorization": "Bearer ghu_validated",
+                "X-MCP-Client-Key": "client-secret",
+            }
+            first = await client.post("/mcp", headers=headers)
+            second = await client.post("/mcp", headers=headers)
+            assert first.status_code == second.status_code == 200
+            assert first.json()["token"] == "ghu_validated"
+
+    asyncio.run(exercise())
+    assert calls == ["/user"]
+
+
+def test_http_bearer_validation_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A token rejected by GitHub cannot enumerate MCP metadata."""
+    _configure_target(monkeypatch, MCP_TRANSPORT="streamable-http")
+    from clients.rest_client import GitHubRESTClient, RESTError
+
+    async def fake_request(self, method: str, path: str, **kwargs):
+        raise RESTError("bad credentials", status_code=401)
+
+    monkeypatch.setattr(GitHubRESTClient, "request", fake_request)
+
+    async def echo_token(_request):
+        return JSONResponse({"token": "unreachable"})
+
+    app = Starlette(routes=[Route("/mcp", echo_token, methods=["POST"])])
+    app.add_middleware(
+        RequestBearerAuthMiddleware,
+        protected_path="/mcp",
+        client_key="client-secret",
+        allowed_prefixes=("ghu_",),
+        validate_tokens=True,
+    )
+
+    async def exercise() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as client:
+            response = await client.post(
+                "/mcp",
+                headers={
+                    "Authorization": "Bearer ghu_invalid",
+                    "X-MCP-Client-Key": "client-secret",
+                },
+            )
+            assert response.status_code == 401
+            assert response.json() == {"error": "unauthorized"}
+
+    asyncio.run(exercise())
+
+
+def test_http_auto_owner_type_is_primed_with_request_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    """HTTP request auth supports owner-type auto-detection without process env auth."""
+    _configure_target(monkeypatch, MCP_TRANSPORT="streamable-http")
+    from services import owner_type_resolver
+
+    calls: list[tuple[str, str]] = []
+
+    async def fake_prime(login: str, token: str):
+        calls.append((login, token))
+        return "organization"
+
+    monkeypatch.setattr(owner_type_resolver, "prime_owner_type_cache", fake_prime)
+
+    async def echo_token(_request):
+        return JSONResponse({"ok": True})
+
+    app = Starlette(routes=[Route("/mcp", echo_token, methods=["POST"])])
+    app.add_middleware(
+        RequestBearerAuthMiddleware,
+        protected_path="/mcp",
+        client_key="client-secret",
+        allowed_prefixes=("ghu_",),
+        owner_login="ExampleOrg",
+    )
+
+    async def exercise() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as client:
+            response = await client.post(
+                "/mcp",
+                headers={
+                    "Authorization": "Bearer ghu_valid",
+                    "X-MCP-Client-Key": "client-secret",
+                },
+            )
+            assert response.status_code == 200
+
+    asyncio.run(exercise())
+    assert calls == [("ExampleOrg", "ghu_valid")]

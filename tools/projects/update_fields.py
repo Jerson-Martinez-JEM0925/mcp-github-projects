@@ -2,8 +2,8 @@
 
 Exposes the `update_project_item_fields` tool function that accepts a
 project item node ID (or an issue/PR number to resolve one, owner-type
-aware) and a dict of field name → value pairs. Applies updates
-sequentially, collecting per-field results (success/failure). Returns all
+aware) and a dict of field name → value pairs. Applies independent updates
+with bounded concurrency, collecting per-field results (success/failure). Returns all
 current field values on full success, or a partial success response with
 per-field outcomes when some updates fail.
 
@@ -20,6 +20,7 @@ Optionally fills omitted board fields with configured defaults
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from datetime import date
@@ -292,21 +293,28 @@ async def update_project_item_fields(params: UpdateFieldsInput) -> dict:
                 suggestion="Provide at least one field, or apply_defaults=true.",
             )
 
-        # 6. Apply updates sequentially, collecting per-field results.
-        results: list[dict[str, str]] = []
+        # 6. Apply independent field updates with bounded concurrency, while
+        # preserving input order in the response. Mutations are still not
+        # retried; concurrency only overlaps separate upstream operations.
+        semaphore = asyncio.Semaphore(get_settings().max_concurrent_requests)
 
-        for canonical_name, value in effective.items():
-            outcome = await _apply_single_field_update(
-                raw_field_name=canonical_name,
-                value=value,
-                item_id=item_id,
-                issue_number=issue_number,
-                content_type=content_type,
-                metadata=metadata,
-                project_service=project_service,
-                issue_service=issue_service,
-            )
-            results.append(outcome)
+        async def apply_one(canonical_name: str, value: Any) -> dict[str, str]:
+            async with semaphore:
+                return await _apply_single_field_update(
+                    raw_field_name=canonical_name,
+                    value=value,
+                    item_id=item_id,
+                    issue_number=issue_number,
+                    content_type=content_type,
+                    metadata=metadata,
+                    project_service=project_service,
+                    issue_service=issue_service,
+                )
+
+        results = list(await asyncio.gather(*(
+            apply_one(canonical_name, value)
+            for canonical_name, value in effective.items()
+        )))
 
         # 7. Determine response type based on outcomes.
         all_success = all(r["outcome"] == "success" for r in results)

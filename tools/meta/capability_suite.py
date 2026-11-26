@@ -710,11 +710,11 @@ async def build_automation_decision(params: RiskInput) -> dict:
     return _success({"decisions": decisions, "markdown": "## Decisiones de automatización\n\n" + "\n".join(f"- **{item['risk']}**: {item['mitigation']}" for item in decisions)})
 
 
-# Exactly 60 public tools are registered by server.py.
+# Exactly 62 public tools are registered by server.py.
 CAPABILITY_TOOL_NAMES = [
-    "validate_issue_markdown", "format_issue_markdown", "add_issue_acceptance_criteria", "summarize_issue", "suggest_issue_labels", "suggest_issue_assignee", "normalize_issue_title", "detect_issue_duplicates", "find_stale_issues", "find_unassigned_issues", "find_missing_issue_metadata", "comment_issue_progress", "comment_issue_plan", "comment_issue_blocker", "comment_issue_resolution", "list_issue_comments", "search_issue_comments", "edit_issue_comment", "build_issue_template", "build_closure_comment", "build_dependency_comment", "project_health_report", "project_status_distribution", "project_priority_distribution", "project_assignee_load", "project_due_date_risk", "project_cycle_time", "project_orphan_items", "project_missing_fields", "project_field_options_report", "project_validate_board", "project_sync_issue_metadata", "project_set_default_status", "project_set_default_priority", "project_bulk_status_by_filter", "project_bulk_priority_by_filter", "project_bulk_due_date_by_filter", "project_export_markdown", "project_import_markdown", "plan_next_sprint", "prioritize_backlog", "generate_daily_plan", "generate_weekly_plan", "generate_risk_register", "generate_dependency_report", "generate_release_checklist", "generate_changelog_from_issues", "generate_project_brief", "generate_stakeholder_update", "detect_scope_creep", "detect_blocked_work", "recommend_wip_moves", "recommend_sprint_assignment", "auto_triage_issue", "build_status_update_comment", "build_sprint_retrospective", "build_roadmap_markdown", "build_issue_creation_bundle", "build_issue_review_checklist", "build_comment_digest",
+    "validate_issue_markdown", "format_issue_markdown", "add_issue_acceptance_criteria", "summarize_issue", "suggest_issue_labels", "suggest_issue_assignee", "normalize_issue_title", "detect_issue_duplicates", "find_stale_issues", "find_unassigned_issues", "find_missing_issue_metadata", "comment_issue_progress", "comment_issue_plan", "comment_issue_blocker", "comment_issue_resolution", "list_issue_comments", "search_issue_comments", "edit_issue_comment", "build_issue_template", "build_closure_comment", "build_dependency_comment", "build_issue_bundle", "project_health_report", "project_status_distribution", "project_priority_distribution", "project_assignee_load", "project_due_date_risk", "project_cycle_time", "project_orphan_items", "project_missing_fields", "project_field_options_report", "project_validate_board", "project_sync_issue_metadata", "project_set_default_status", "project_set_default_priority", "project_bulk_status_by_filter", "project_bulk_priority_by_filter", "project_bulk_due_date_by_filter", "project_export_markdown", "project_import_markdown", "plan_next_sprint", "prioritize_backlog", "generate_daily_plan", "generate_weekly_plan", "generate_risk_register", "generate_dependency_report", "generate_release_checklist", "generate_changelog_from_issues", "generate_project_brief", "generate_stakeholder_update", "detect_scope_creep", "detect_blocked_work", "recommend_wip_moves", "recommend_sprint_assignment", "auto_triage_issue", "build_status_update_comment", "build_sprint_retrospective", "build_roadmap_markdown", "build_issue_creation_bundle", "build_issue_review_checklist", "build_comment_digest", "build_automation_decision",
 ]
-assert len(CAPABILITY_TOOL_NAMES) == 60
+assert len(CAPABILITY_TOOL_NAMES) == 62
 
 # One-line descriptions. These functions are defined compactly without
 # docstrings, so without this table MCP clients received an EMPTY description
@@ -744,6 +744,7 @@ _DESCRIPTIONS: dict[str, str] = {
     "build_issue_template": "Build issue Markdown (Contexto, Problema actual, Solución propuesta, Criterio de aceptación, …) from its parts (local, no API).",
     "build_closure_comment": "Build a closure comment with a summary, changed files and verification steps (local, no API).",
     "build_dependency_comment": "Build a \"Bloqueado por #N\" dependency comment (local, no API).",
+    "build_issue_bundle": "Build a Markdown bundle containing several issues with their key metadata.",
     "project_health_report": "Board health: item count, items missing a title and the percentage that have one.",
     "project_status_distribution": "Count board items per Status value.",
     "project_priority_distribution": "Count board items per Priority value.",
@@ -783,6 +784,7 @@ _DESCRIPTIONS: dict[str, str] = {
     "build_issue_creation_bundle": "Build a title + body bundle from the issue template (dry run; no issue is created).",
     "build_issue_review_checklist": "Review checklist for an issue: description, acceptance criteria, labels, assignee, milestone.",
     "build_comment_digest": "Comment count and latest comment for several issues.",
+    "build_automation_decision": "Build an automation decision matrix pairing each risk with its mitigation (local, no API).",
 }
 assert set(_DESCRIPTIONS) == set(CAPABILITY_TOOL_NAMES), set(_DESCRIPTIONS) ^ set(CAPABILITY_TOOL_NAMES)
 for _name, _description in _DESCRIPTIONS.items():

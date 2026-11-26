@@ -10,7 +10,10 @@ Security: The token value is NEVER logged or included in error messages.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
+import random
+import threading
 from datetime import UTC, datetime
 
 import httpx
@@ -28,6 +31,44 @@ from models.context import GitHubContext
 logger = logging.getLogger(__name__)
 
 GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
+_CLIENTS_LOCK = threading.Lock()
+_SHARED_CLIENTS: dict[tuple[asyncio.AbstractEventLoop, str, float], httpx.AsyncClient] = {}
+
+
+def _token_fingerprint(token: str) -> str:
+    """Return a non-reversible cache key fragment for a credential."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _shared_http_client(token: str, timeout: float) -> httpx.AsyncClient:
+    """Return a pooled AsyncClient scoped to the event loop and credential.
+
+    Authentication is still sent per request; credential fingerprinting only
+    prevents connection reuse across different users in multi-tenant HTTP mode.
+    Closed event-loop entries are evicted before lookup so pytest loops and
+    short-lived embedding applications do not accumulate clients.
+    """
+    loop = asyncio.get_running_loop()
+    fingerprint = _token_fingerprint(token)
+    key = (loop, fingerprint, timeout)
+    with _CLIENTS_LOCK:
+        for cached_key, cached_client in list(_SHARED_CLIENTS.items()):
+            cached_loop = cached_key[0]
+            if cached_loop.is_closed() or cached_client.is_closed:
+                _SHARED_CLIENTS.pop(cached_key, None)
+        client = _SHARED_CLIENTS.get(key)
+        if client is None:
+            client = httpx.AsyncClient(
+                timeout=timeout,
+                limits=httpx.Limits(
+                    max_connections=20,
+                    max_keepalive_connections=10,
+                    keepalive_expiry=30.0,
+                ),
+                follow_redirects=False,
+            )
+            _SHARED_CLIENTS[key] = client
+        return client
 
 
 class GraphQLClient:
@@ -85,12 +126,12 @@ class GraphQLClient:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
-                response = await client.post(
-                    GITHUB_GRAPHQL_URL,
-                    json=payload,
-                    headers=headers,
-                )
+            client = _shared_http_client(token, self._timeout)
+            response = await client.post(
+                GITHUB_GRAPHQL_URL,
+                json=payload,
+                headers=headers,
+            )
         except httpx.TimeoutException as exc:
             raise TimeoutError(
                 f"Request timed out after {self._timeout}s"
@@ -104,13 +145,21 @@ class GraphQLClient:
 
         # GitHub can return transient gateway failures without GraphQL errors.
         if response.status_code in {408, 425, 429} or response.status_code >= 500:
-            retry_after = response.headers.get("Retry-After")
+            retry_after_header = response.headers.get("Retry-After")
+            retry_after: float | None = None
+            if retry_after_header:
+                try:
+                    retry_after = max(0.0, float(retry_after_header))
+                except ValueError:
+                    retry_after = None
             detail = f" HTTP {response.status_code}."
-            if retry_after:
-                detail += f" Retry-After: {retry_after}s."
+            if retry_after_header:
+                detail += f" Retry-After: {retry_after_header}s."
             raise GraphQLError(
                 f"GitHub API is temporarily unavailable.{detail}",
                 request_id=request_id,
+                retryable=True,
+                retry_after=retry_after,
             )
 
         # Handle authentication errors
@@ -182,7 +231,9 @@ class GraphQLClient:
 
         Retry policy:
         - Mutations (is_mutation=True): NEVER retry, return error immediately.
-        - Reads (is_mutation=False): Retry ONCE after a 2-second delay on timeout.
+        - Reads: retry transient timeouts and retryable HTTP failures up to the
+          configured attempt budget, using exponential backoff, jitter, and
+          Retry-After when supplied by GitHub.
 
         Args:
             query: GraphQL query or mutation string.
@@ -210,12 +261,19 @@ class GraphQLClient:
         for attempt in range(self._retry_attempts + 1):
             try:
                 return await self.execute(query, variables)
-            except TimeoutError:
-                if attempt >= self._retry_attempts:
+            except (TimeoutError, GraphQLError) as exc:
+                retryable = isinstance(exc, TimeoutError) or exc.retryable
+                if not retryable or attempt >= self._retry_attempts:
                     raise
-                delay = self._retry_delay * (2**attempt)
+                backoff = self._retry_delay * (2**attempt)
+                retry_after = getattr(exc, "retry_after", None)
+                if retry_after is not None:
+                    delay = max(backoff, retry_after)
+                else:
+                    delay = backoff + random.uniform(0.0, min(1.0, max(backoff, 0.1) * 0.25))
                 logger.info(
-                    "Read operation timed out; retry %d/%d after %.2fs",
+                    "Retryable read failure (%s); retry %d/%d after %.2fs",
+                    type(exc).__name__,
                     attempt + 1,
                     self._retry_attempts,
                     delay,

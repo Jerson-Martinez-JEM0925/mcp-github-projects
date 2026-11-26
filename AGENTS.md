@@ -14,14 +14,17 @@ maintain `CLAUDE.md`.
 
 This repository is a **Model Context Protocol (MCP) server for GitHub Projects
 V2**. It exposes 100+ tools for managing issues, project-board fields,
-milestones, labels, sub-issues, sprints, epics, and PR/issue lifecycle
-automation. It is built on **FastMCP**, communicates over the **stdio**
-transport, and runs as a **Docker container**.
+milestones, labels, sub-issues, pull requests, GitHub Actions, repository
+content, sprints, epics, and PR/issue lifecycle automation. It is built on
+**FastMCP 4.x**, communicates over **stdio** by default or optional stateless
+**Streamable HTTP**, and runs as a **Docker container**.
 
 - Language: **Python 3.12+**, fully type-hinted.
-- Transport: FastMCP over stdio (`server.py` → `mcp.run(transport="stdio")`).
-- Data access: GitHub GraphQL API v4 (Projects V2) with a `gh` CLI fallback
-  for REST-only operations.
+- Transport: stdio (`server.py` → `mcp.run(transport="stdio")`) by default;
+  `MCP_TRANSPORT=streamable-http` enables the stateless HTTP ASGI app.
+- Data access: pooled GitHub GraphQL v4 for Projects V2 plus pooled direct
+  REST fast paths for high-frequency issue/label operations; `gh` CLI remains
+  the fallback for operations not implemented by the direct transport.
 - Runtime: **Docker only** — there are no supported host-Python workflows.
 - Maintainership: single maintainer, public OSS (MIT).
 
@@ -35,21 +38,17 @@ Imports are top-level (`from tools.close import close_issue`,
 
 ```
 .
-├── server.py            # FastMCP entry point; registers every tool
-├── config.py            # Settings (env-driven): org/repo/project, timeouts, scopes
-├── auth.py              # Token resolution + scope validation
-├── capabilities.py      # Capability enum + profile capability enforcement
-├── profiles.py          # Multi-target profile registry (user vs org projects)
-├── error_handling.py    # build_error_response(), handle_tool_error()
-├── exceptions.py        # Typed exceptions
-├── hardening.py         # Input/rate-limit hardening helpers
+├── server.py            # FastMCP entry point; registers every exposed tool
+├── core/                # config, auth, access levels, capabilities, HTTP auth,
+│                        # error handling, context, factory and hardening
+├── auth.py/config.py/…  # legacy compatibility shims re-exporting core modules
 ├── tools/               # One module per tool (or tool family) — see §4
-│   ├── __init__.py      # Re-exports the core tool subset
-│   ├── comment_issue.py # Canonical single-tool example
-│   ├── capability_suite.py  # Extended 60-tool suite (dynamic registration)
+│   ├── issues/          # issue lifecycle tools
+│   ├── projects/        # board/item field operations
+│   ├── meta/            # capability suite and diagnostics
 │   └── ...
 ├── services/            # Domain services (issue_service, project_service, ...)
-├── clients/             # graphql_client, gh_cli_client, cache_manager
+├── clients/             # graphql_client, rest_client, gh_cli_client, resource_cache, cache_manager
 ├── graphql/             # queries.py, mutations.py (GraphQL documents)
 ├── models/              # Pydantic models — responses.py, context.py, items.py
 ├── scripts/             # Docker-invoked CI/validation scripts (Python + bash)
@@ -85,8 +84,12 @@ Everyday targets:
 | `make tools`    | Count registered MCP tools (must be **≥ 100**)                 |
 | `make syntax`   | `ast.parse` every `.py` file                                   |
 | `make secrets`  | Scan the tree for leaked credentials                           |
+| `make lint`     | Ruff correctness lint (E9/F baseline)                      |
+| `make typecheck`| mypy on hardened core/client boundary                      |
+| `make security` | Bandit medium+ findings plus pip-audit                      |
+| `make lock`     | Regenerate hash-pinned runtime/dev dependency locks          |
 | `make preflight`| Check host prerequisites (Docker, token, image)               |
-| `make validate` | **Full CI mirror**: build + syntax + test + tools + secrets    |
+| `make validate` | **Full CI mirror**: build + syntax + tests + tools + secrets + lint + types + security |
 | `make shell`    | Interactive shell inside the container                         |
 | `make run`      | Start the server in stdio mode via compose                     |
 | `make clean`    | Remove built images                                            |
@@ -112,9 +115,10 @@ canonical reference. A tool is:
 5. On failure, return an error envelope via `build_error_response(...)` for
    known/typed failures, or `handle_tool_error(exc, context=...)` in the catch-all
    `except`. Never raise out of a tool.
-6. **Registered in `server.py`** with `mcp.tool()(<function>)`. If the tool
-   belongs to the core subset, also re-export it from `tools/__init__.py`
-   (add to both the imports and `__all__`, kept alphabetical).
+6. **Registered through `server.py`** by importing the function and adding it
+   to `_ALL_TOOLS`; `_register_tools()` applies access level, role-profile
+   capabilities and the write allowlist centrally. New tools must also be
+   classified in `core/access.py` and mapped in `core/capabilities.py`.
 
 Minimal skeleton:
 
@@ -169,12 +173,20 @@ async def do_thing(params: DoThingInput) -> dict:
         return handle_tool_error(exc, context="Do thing failed")
 ```
 
-Then register in `server.py`:
+Then import it in `server.py` and add it to `_ALL_TOOLS`:
 
 ```python
 from tools.do_thing import do_thing
-mcp.tool()(do_thing)
+
+_ALL_TOOLS = [
+    # ...
+    do_thing,
+]
 ```
+
+Do not bypass `_register_tools()`: central registration is what applies the
+uniform argument schema, correlation spans/logs, access level, role profile,
+and write allowlist.
 
 Response envelopes (`models/responses.py`): `ToolSuccess` is
 `{"ok": true, "data": ...}`; the error path yields
@@ -195,10 +207,12 @@ Response envelopes (`models/responses.py`): `ToolSuccess` is
 
 - **Type hints everywhere.** Every public function and every model field is
   annotated. `from __future__ import annotations` at the top of each module.
-- **Prefer GraphQL.** Projects V2 is a GraphQL-native API; reach for the GraphQL
-  client (`clients/graphql_client.py`, documents in `graphql/`) whenever the
-  operation is available there. Fall back to the `gh` CLI (`gh_cli_client.py`)
-  only for operations GraphQL does not expose.
+- **Prefer pooled API clients.** Projects V2 is GraphQL-native; use the pooled
+  GraphQL client (`clients/graphql_client.py`, documents in `graphql/`) whenever
+  the operation is available there. High-frequency REST operations implemented in
+  `clients/rest_client.py` should use the direct REST fast path in
+  `gh_cli_client.py`. Fall back to the `gh` subprocess only for operations not
+  exposed by those clients.
 - **Secrets are never logged.** Do not log, echo, or embed tokens in responses,
   error messages, or test fixtures. `make secrets` must stay green.
 - **Errors are explicit.** No silent `except: pass`. Every caught exception is

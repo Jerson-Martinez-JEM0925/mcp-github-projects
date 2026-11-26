@@ -72,6 +72,8 @@ class ProjectService:
         self,
         metadata: ProjectMetadata,
         filters: dict | None = None,
+        *,
+        include_body: bool = True,
     ) -> list[ProjectItem]:
         """List project items with optional filters.
 
@@ -113,7 +115,11 @@ class ProjectService:
         self._validate_filters(metadata, filters)
 
         # Fetch all items with pagination.
-        items = await self._fetch_all_items(metadata, settings.max_items)
+        items = await self._fetch_all_items(
+            metadata,
+            settings.max_items,
+            include_body=include_body,
+        )
 
         # Apply client-side filters.
         filtered = self._apply_filters(items, filters)
@@ -243,7 +249,11 @@ class ProjectService:
             The project item node ID, or None if the number is not on the
             board (or is ambiguous across repositories).
         """
-        items = await self._fetch_all_items(metadata, get_settings().max_items)
+        items = await self._fetch_all_items(
+            metadata,
+            get_settings().max_items,
+            include_body=False,
+        )
         matches = [item for item in items if item.issue_number == issue_or_pr_number]
         repository = repository or self._context.target.repository_full_name
         if repository:
@@ -528,6 +538,8 @@ class ProjectService:
         metadata: ProjectMetadata,
         max_items: int,
         exhaustive: bool = False,
+        *,
+        include_body: bool = True,
     ) -> list[ProjectItem]:
         """Fetch all project items with pagination.
 
@@ -573,6 +585,7 @@ class ProjectService:
                 project_number=metadata.project_number,
                 owner_type=owner_type,
                 first=fetch_count,
+                includeBody=include_body,
             )
             if cursor is not None:
                 variables["after"] = cursor

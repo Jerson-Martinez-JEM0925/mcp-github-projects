@@ -14,10 +14,7 @@ os.environ.setdefault("GH_PROJECT_REPO_NAME", "TestRepo")
 os.environ.setdefault("GH_PROJECT_PROJECT_NUMBER", "1")
 
 from graphql.queries import (
-    DISCOVERY_QUERY_ORG,
-    DISCOVERY_QUERY_USER,
     get_discovery_query,
-    get_list_items_query,
     get_query_variables,
     extract_project_data,
 )
