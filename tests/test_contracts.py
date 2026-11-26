@@ -397,14 +397,11 @@ class TestStableToolSchemas:
         # legacy issue_or_pr_number argument while accepting issue_number as an
         # alias. Optional repository and link-keyword fields preserve existing
         # callers. The generated catalog and unit tests are updated together.
-        # Rebaselined for the program-scale tool suite and compatibility
-        # additions in this PR. The changes are additive except for the
-        # existing add_item_to_project input now accepting an optional alias;
-        # the legacy issue_or_pr_number shape remains supported. New tools
-        # expose the requested diagnostics and traceability operations.
-        # Do NOT update this value to silence a failure: re-run the same
-        # field-by-field comparison first and record the outcome in CHANGELOG.md.
-        assert digest == "9bf5b8124583d7ade73cb13d8be79e6ee0c1cd3397375a6c164c5c4ee4d7f64f", (
+        # Rebaselined for the multi-project board selector. Project-board
+        # tools retain their legacy default behavior while exposing an optional
+        # project_number selector and GH_PROJECT_PROJECT_NUMBERS allowlist.
+        # The digest is updated together with the documented protocol change.
+        assert digest == "77acfd5038316c2a6ee1ea7c174469f84c5858d1eac14ac60a8306fca6739270", (
             f"Stable tool schema digest changed: {digest}. "
             "Update intentionally and document the protocol change."
         )

@@ -21,6 +21,7 @@ from core.access import resolve_repository
 from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
 from core.factory import get_service_factory
+from core.project_scope import project_context
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ class MoveToStatusInput(BaseModel):
 
     item_id: str = Field(description="Project item node ID (PVTI_...)")
     status: str = Field(description="Name of a Status option on the board, e.g. 'In Progress'. Exact names match first; a leading emoji is optional ('Done' matches '✅ Done'). Run discover_ids to list the options.")
+    project_number: int | None = Field(default=None, gt=0, le=100_000)
 
 
 class BulkUpdateItemsInput(BaseModel):
@@ -40,6 +42,7 @@ class BulkUpdateItemsInput(BaseModel):
         description="List of project item node IDs to update (maximum 25)",
     )
     fields: dict = Field(description="Fields to set on all items (e.g., {\"Priority\": \"Urgent\", \"Due date\": \"2026-08-01\"})")
+    project_number: int | None = Field(default=None, gt=0, le=100_000)
 
 
 class GetIssueDetailInput(BaseModel):
@@ -113,10 +116,18 @@ async def move_to_status(params: MoveToStatusInput) -> dict:
     """
 
     try:
+        context = project_context(params.project_number)
         graphql_client = await get_service_factory().graphql()
-        gh_client = get_service_factory().gh()
-        discovery = await get_service_factory().discovery_service(graphql_client)
-        project_service = await get_service_factory().project_service(graphql_client, gh_client)
+        gh_client = get_service_factory().gh(context=context)
+        discovery = await get_service_factory().discovery_service(
+            graphql_client,
+            context=context,
+        )
+        project_service = await get_service_factory().project_service(
+            graphql_client,
+            gh_client,
+            context=context,
+        )
         metadata = await discovery.get_cached_or_discover()
 
         await project_service.update_field(
@@ -152,10 +163,18 @@ async def bulk_update_items(params: BulkUpdateItemsInput) -> dict:
     """
 
     try:
+        context = project_context(params.project_number)
         graphql_client = await get_service_factory().graphql()
-        gh_client = get_service_factory().gh()
-        discovery = await get_service_factory().discovery_service(graphql_client)
-        project_service = await get_service_factory().project_service(graphql_client, gh_client)
+        gh_client = get_service_factory().gh(context=context)
+        discovery = await get_service_factory().discovery_service(
+            graphql_client,
+            context=context,
+        )
+        project_service = await get_service_factory().project_service(
+            graphql_client,
+            gh_client,
+            context=context,
+        )
         metadata = await discovery.get_cached_or_discover()
 
         results: list[dict] = []

@@ -27,6 +27,7 @@ from core.protocols import GHCLIRunner, GraphQLExecutor
 
 if TYPE_CHECKING:
     from clients.cache_manager import CacheManager
+    from models.context import GitHubContext
     from services.discovery_service import DiscoveryService
     from services.field_service import FieldService
     from services.issue_service import IssueService
@@ -84,14 +85,14 @@ class ServiceFactory:
 
         return GraphQLClient(token=await self.token())
 
-    def gh(self) -> GHCLIRunner:
+    def gh(self, context: GitHubContext | None = None) -> GHCLIRunner:
         """Return a CLI runner with the active request-scoped credential."""
         if self._gh_override is not None:
             return self._gh_override
         from clients.gh_cli_client import GHCLIClient
         from models.context import GitHubContext
 
-        return GHCLIClient(context=GitHubContext.from_settings())
+        return GHCLIClient(context=context or GitHubContext.from_settings())
 
     def cache_manager(self) -> CacheManager:
         """Return the project-metadata cache manager."""
@@ -103,30 +104,41 @@ class ServiceFactory:
 
     # ── Services ────────────────────────────────────────────────────────────
 
-    async def discovery_service(self, graphql: GraphQLExecutor | None = None) -> DiscoveryService:
-        """Return a ``DiscoveryService`` sharing ``graphql`` when given."""
+    async def discovery_service(
+        self,
+        graphql: GraphQLExecutor | None = None,
+        context: GitHubContext | None = None,
+    ) -> DiscoveryService:
+        """Return a discovery service bound to the selected project."""
         from services.discovery_service import DiscoveryService
 
         return DiscoveryService(
             graphql_client=graphql or await self.graphql(),
             cache_manager=self.cache_manager(),
+            context=context,
         )
 
     async def project_service(
         self,
         graphql: GraphQLExecutor | None = None,
         gh: GHCLIRunner | None = None,
+        context: GitHubContext | None = None,
     ) -> ProjectService:
-        """Return a ``ProjectService`` sharing the given transports."""
+        """Return a project service bound to the selected project."""
         from services.project_service import ProjectService
 
         return ProjectService(
             graphql_client=graphql or await self.graphql(),
-            gh_client=gh or self.gh(),
+            gh_client=gh or self.gh(context=context),
+            context=context,
         )
 
-    async def field_service(self, graphql: GraphQLExecutor | None = None) -> FieldService:
-        """Return a ``FieldService`` sharing ``graphql`` when given."""
+    async def field_service(
+        self,
+        graphql: GraphQLExecutor | None = None,
+        context: GitHubContext | None = None,
+    ) -> FieldService:
+        """Return a field service sharing ``graphql`` and project context."""
         from services.field_service import FieldService
 
         return FieldService(graphql_client=graphql or await self.graphql())

@@ -17,6 +17,7 @@ from core.error_handling import build_error_response, handle_tool_error
 from core.exceptions import ValidationError
 from models.responses import ToolSuccess
 from core.factory import get_service_factory
+from core.project_scope import project_context
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,12 @@ class SetEstimateInput(BaseModel):
     item_id: str = Field(description="Project item node ID")
     value: float = Field(
         description="Estimate in hours (0.25-9999, multiple of 0.25)"
+    )
+    project_number: int | None = Field(
+        default=None,
+        gt=0,
+        le=100_000,
+        description="Project V2 board number; defaults to the configured board.",
     )
 
 
@@ -53,8 +60,12 @@ async def set_estimate(params: SetEstimateInput) -> dict:
         error_type, message, suggestion) on failure.
     """
     try:
+        context = project_context(params.project_number)
         graphql_client = await get_service_factory().graphql()
-        discovery_service = await get_service_factory().discovery_service(graphql_client)
+        discovery_service = await get_service_factory().discovery_service(
+            graphql_client,
+            context=context,
+        )
         field_service = await get_service_factory().field_service(graphql_client)
 
         # 1. Get project metadata to find the Estimate field.

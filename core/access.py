@@ -24,12 +24,14 @@ Tool classification (``ToolAccess``):
 Scope lock (parity with ``MONDAY_WORKSPACE_ID``):
 
     When ``GH_PROJECT_SCOPE_LOCK=true`` every tool is confined to the
-    configured ``GH_PROJECT_ORG_NAME`` / ``GH_PROJECT_REPO_NAME`` /
-    ``GH_PROJECT_PROJECT_NUMBER``. A tool that accepts an owner / repo /
-    project override targeting anything else is refused with a typed
-    :class:`~core.exceptions.ScopeLockError` — naming the variable — BEFORE
-    any mutation is built. When the lock is off the server stays as wide as
-    the token allows (backward compatible).
+    configured ``GH_PROJECT_ORG_NAME`` / ``GH_PROJECT_REPO_NAME`` and the
+    project numbers in ``GH_PROJECT_PROJECT_NUMBERS`` (with the legacy
+    ``GH_PROJECT_PROJECT_NUMBER`` always included). A tool that accepts an
+    owner / repo / project override targeting anything else is refused with a
+    typed :class:`~core.exceptions.ScopeLockError` — naming the variable —
+    BEFORE any mutation is built. When the lock is off the server stays as
+    wide as the token allows for repository targets, while explicit project
+    selectors remain bounded by the configured project allowlist.
 """
 
 from __future__ import annotations
@@ -243,16 +245,14 @@ def enforce_scope(
             f"{_SCOPE_VARIABLE}=false to target other repositories, or omit "
             "the override to use the configured repository."
         )
-    if project_number is not None and int(project_number) != int(
-        settings.project_number
-    ):
-        raise ScopeLockError(
-            f"project {project_number} is outside the locked scope "
-            f"(project {settings.project_number}). {_SCOPE_VARIABLE}=true "
-            f"confines this server to project {settings.project_number}. Set "
-            f"{_SCOPE_VARIABLE}=false to target other projects, or omit the "
-            "override to use the configured project."
-        )
+    if project_number is not None:
+        allowed_projects = getattr(settings, "configured_project_numbers", lambda: (settings.project_number,))()
+        if int(project_number) not in allowed_projects:
+            raise ScopeLockError(
+                f"project {project_number} is outside the configured project allowlist "
+                f"{list(allowed_projects)}. {_SCOPE_VARIABLE}=true or "
+                "GH_PROJECT_PROJECT_NUMBERS must include the requested project."
+            )
 
 
 def resolve_repository(owner: str | None, repo: str | None) -> str:

@@ -63,6 +63,7 @@ async def server_info(params: ServerInfoInput) -> dict:
             "repo_name": settings.repo_name,
             "repository": f"{settings.org_name}/{settings.repo_name}",
             "project_number": settings.project_number,
+            "project_numbers": list(settings.configured_project_numbers()),
             "owner_type": settings.owner_type,
         }
 
@@ -71,8 +72,8 @@ async def server_info(params: ServerInfoInput) -> dict:
             "variable": "GH_PROJECT_SCOPE_LOCK",
             "confined_to": target if settings.scope_lock else None,
             "meaning": (
-                "Every tool is confined to the configured org/repo/project; "
-                "other targets are refused."
+                "Every tool is confined to the configured org/repo/project "
+                "allowlist; other targets are refused."
                 if settings.scope_lock
                 else "Off — the server is as wide as the token allows."
             ),

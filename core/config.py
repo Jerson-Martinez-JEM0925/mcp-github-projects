@@ -7,6 +7,10 @@ GH_PROJECT_.
 Target fields (org_name, repo_name, project_number) are MANDATORY --
 the server will refuse to start without them, providing an actionable
 error message.
+
+Project-board tools can optionally select another board from the same owner
+through ``GH_PROJECT_PROJECT_NUMBERS``. ``GH_PROJECT_PROJECT_NUMBER`` remains
+the backward-compatible default target.
 """
 
 import os
@@ -54,12 +58,14 @@ The following environment variables MUST be set:
   GH_PROJECT_ORG_NAME       — GitHub owner (organization or user login)
   GH_PROJECT_REPO_NAME      — Repository name
   GH_PROJECT_PROJECT_NUMBER — GitHub Project V2 number (1–100000)
+  GH_PROJECT_PROJECT_NUMBERS — Optional comma-separated additional boards
 
 Example (.env file or environment):
 
   GH_PROJECT_ORG_NAME=my-org
   GH_PROJECT_REPO_NAME=my-repo
   GH_PROJECT_PROJECT_NUMBER=1
+  GH_PROJECT_PROJECT_NUMBERS=1,2
 
 For a quick start with an existing profile, copy one of the bundled
 .env examples:
@@ -112,6 +118,15 @@ class GitHubProjectSettings(BaseSettings):
         ge=0,
         le=100_000,
         description="GitHub Project V2 board number",
+    )
+    project_numbers: str = Field(
+        default="",
+        max_length=2_000,
+        description=(
+            "Optional comma-separated Project V2 board numbers that may be "
+            "selected by project-board tools. The configured project_number "
+            "is always included as the default."
+        ),
     )
     owner_type: str = Field(
         default="auto",
@@ -239,16 +254,15 @@ class GitHubProjectSettings(BaseSettings):
 
     # scope_lock reads GH_PROJECT_SCOPE_LOCK (prefixed) — parity concept with
     # mcp-monday-projects' MONDAY_WORKSPACE_ID. When true, every tool is
-    # confined to the configured GH_PROJECT_ORG_NAME / GH_PROJECT_REPO_NAME /
-    # GH_PROJECT_PROJECT_NUMBER; a call targeting another scope is refused.
+    # confined to the configured org/repo and the project allowlist. The
+    # legacy project_number remains the default.
     scope_lock: bool = Field(
         default=False,
         description=(
             "When true (GH_PROJECT_SCOPE_LOCK=true), confine every tool to the "
-            "configured GH_PROJECT_ORG_NAME / GH_PROJECT_REPO_NAME / "
-            "GH_PROJECT_PROJECT_NUMBER; a call targeting any other "
-            "owner/repo/project is refused with a typed error naming the "
-            "variable, before any mutation. Default false (unrestricted)."
+            "configured GH_PROJECT_ORG_NAME / GH_PROJECT_REPO_NAME and the "
+            "configured project allowlist; calls targeting anything else are "
+            "refused with a typed error. Default false (unrestricted)."
         ),
     )
 
@@ -397,6 +411,8 @@ class GitHubProjectSettings(BaseSettings):
         if self.project_number < 1:
             missing.append("GH_PROJECT_PROJECT_NUMBER")
 
+        self._validate_project_numbers()
+
         if missing:
             print(_MISSING_TARGET_MSG, file=sys.stderr)
             raise ValueError(
@@ -404,6 +420,30 @@ class GitHubProjectSettings(BaseSettings):
                 "Set them via environment variables or .env file."
             )
         return self
+
+    def _validate_project_numbers(self) -> None:
+        """Validate the optional comma-separated project-board allowlist."""
+        raw = (self.project_numbers or "").strip()
+        if not raw:
+            return
+        for token in raw.split(","):
+            token = token.strip()
+            if not token:
+                continue
+            if not token.isdigit() or not 1 <= int(token) <= 100_000:
+                raise ValueError(
+                    "GH_PROJECT_PROJECT_NUMBERS must contain comma-separated "
+                    "positive integers between 1 and 100000."
+                )
+
+    def configured_project_numbers(self) -> tuple[int, ...]:
+        """Return the default board followed by configured additional boards."""
+        numbers = [self.project_number]
+        for token in (self.project_numbers or "").split(","):
+            token = token.strip()
+            if token and int(token) not in numbers:
+                numbers.append(int(token))
+        return tuple(numbers)
 
     def token_prefixes(self) -> tuple[str, ...]:
         """Return normalized allowed request-token prefixes.

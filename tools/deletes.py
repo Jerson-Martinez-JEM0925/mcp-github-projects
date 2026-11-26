@@ -37,6 +37,7 @@ from core.error_handling import build_error_response, handle_tool_error
 from graphql.mutations import DELETE_ISSUE_MUTATION, DELETE_PROJECT_ITEM_MUTATION
 from models.responses import ToolSuccess
 from core.factory import get_service_factory
+from core.project_scope import project_context
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,7 @@ class DeleteProjectItemInput(BaseModel):
         description="Project item node ID to delete permanently (e.g. 'PVTI_...').",
     )
     confirm: bool = Field(default=False, description=_CONFIRM_DESCRIPTION)
+    project_number: int | None = Field(default=None, gt=0, le=100_000)
 
 
 async def delete_project_item(params: DeleteProjectItemInput) -> dict:
@@ -89,8 +91,12 @@ async def delete_project_item(params: DeleteProjectItemInput) -> dict:
                 "archive_project_item (archives, restorable) or move_to_trash",
             )
 
+        context = project_context(params.project_number)
         graphql_client = await get_service_factory().graphql()
-        discovery_service = await get_service_factory().discovery_service(graphql_client)
+        discovery_service = await get_service_factory().discovery_service(
+            graphql_client,
+            context=context,
+        )
         metadata = await discovery_service.get_cached_or_discover()
 
         result = await graphql_client.execute_with_retry(

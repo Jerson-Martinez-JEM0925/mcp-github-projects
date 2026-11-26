@@ -44,6 +44,7 @@ from services.field_names import resolve_field_name
 from services.issue_service import IssueService
 from services.project_service import ProjectService
 from core.factory import get_service_factory
+from core.project_scope import project_context
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +132,12 @@ class UpdateFieldsInput(BaseModel):
             "still unset after defaults"
         ),
     )
+    project_number: int | None = Field(
+        default=None,
+        gt=0,
+        le=100_000,
+        description="Project V2 board number; defaults to the configured board.",
+    )
 
 
 async def update_project_item_fields(params: UpdateFieldsInput) -> dict:
@@ -154,11 +161,19 @@ async def update_project_item_fields(params: UpdateFieldsInput) -> dict:
     """
     try:
         # Resolve token and initialize services.
+        context = project_context(params.project_number)
         graphql_client = await get_service_factory().graphql()
-        gh_client = get_service_factory().gh()
+        gh_client = get_service_factory().gh(context=context)
 
-        discovery_service = await get_service_factory().discovery_service(graphql_client)
-        project_service = await get_service_factory().project_service(graphql_client, gh_client)
+        discovery_service = await get_service_factory().discovery_service(
+            graphql_client,
+            context=context,
+        )
+        project_service = await get_service_factory().project_service(
+            graphql_client,
+            gh_client,
+            context=context,
+        )
         issue_service = get_service_factory().issue_service(gh_client)
 
         # 1. Discover project metadata for field resolution.

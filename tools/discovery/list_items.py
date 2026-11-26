@@ -16,6 +16,7 @@ from core.error_handling import build_error_response, handle_tool_error
 from core.access import resolve_repository_target
 from models.responses import ToolSuccess
 from core.factory import get_service_factory
+from core.project_scope import project_context
 
 logger = logging.getLogger(__name__)
 
@@ -59,8 +60,14 @@ class ListProjectItemsInput(BaseModel):
     due_date: str | None = Field(
         default=None, description="ISO 8601 date (YYYY-MM-DD)"
     )
-    due_date_op: str | None = Field(
-        default=None, description="Comparison: before, after, exact"
+    project_number: int | None = Field(
+        default=None,
+        gt=0,
+        le=100_000,
+        description=(
+            "Project V2 board number. Omit to use the configured default; "
+            "selects one of GH_PROJECT_PROJECT_NUMBERS when provided."
+        ),
     )
 
 
@@ -116,10 +123,18 @@ async def list_project_items(
             )
 
         # Resolve token and initialize services.
+        context = project_context(params.project_number)
         graphql_client = await get_service_factory().graphql()
-        gh_client = get_service_factory().gh()
-        discovery_service = await get_service_factory().discovery_service(graphql_client)
-        project_service = await get_service_factory().project_service(graphql_client, gh_client)
+        gh_client = get_service_factory().gh(context=context)
+        discovery_service = await get_service_factory().discovery_service(
+            graphql_client,
+            context=context,
+        )
+        project_service = await get_service_factory().project_service(
+            graphql_client,
+            gh_client,
+            context=context,
+        )
 
         # 1. Discover project metadata (cached or fresh).
         metadata = await discovery_service.get_cached_or_discover()

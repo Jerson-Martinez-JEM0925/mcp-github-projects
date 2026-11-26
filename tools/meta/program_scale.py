@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field, model_validator
 from core.access import resolve_repository
 from core.error_handling import build_error_response, handle_tool_error
 from core.factory import get_service_factory
+from core.project_scope import project_context
 from models.responses import ToolSuccess
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,12 @@ class RepositoryTarget(BaseModel):
     repository: str | None = Field(default=None, description="Repository as owner/name")
     owner: str | None = Field(default=None, description="Repository owner override")
     repo: str | None = Field(default=None, description="Repository name override")
+    project_number: int | None = Field(
+        default=None,
+        gt=0,
+        le=100_000,
+        description="Project V2 board number; defaults to the configured board.",
+    )
 
     @model_validator(mode="after")
     def validate_repository(self) -> "RepositoryTarget":
@@ -357,9 +364,17 @@ async def project_progress_report(params: ProjectProgressInput) -> dict:
     """Aggregate Project V2 items by status or another field."""
     try:
         graphql = await get_service_factory().graphql()
-        gh = get_service_factory().gh()
-        discovery = await get_service_factory().discovery_service(graphql)
-        project = await get_service_factory().project_service(graphql, gh)
+        context = project_context(params.project_number)
+        gh = get_service_factory().gh(context=context)
+        discovery = await get_service_factory().discovery_service(
+            graphql,
+            context=context,
+        )
+        project = await get_service_factory().project_service(
+            graphql,
+            gh,
+            context=context,
+        )
         metadata = await discovery.get_cached_or_discover()
         items = await project.list_all_items(metadata)
         selected = items
@@ -491,14 +506,22 @@ async def epic_rollup(params: EpicRollupInput) -> dict:
     """Aggregate sub-issue states, estimates, blockers, and linked PRs."""
     try:
         repo = _repository(params)
-        gh = get_service_factory().gh()
+        context = project_context(params.project_number)
+        gh = get_service_factory().gh(context=context)
         subissues = await _json(gh, ["api", f"repos/{repo}/issues/{params.epic_issue_number}/sub_issues?per_page=100"], [])
         project_items: dict[int, Any] = {}
         hours_by_state: defaultdict[str, float] = defaultdict(float)
         try:
             graphql = await get_service_factory().graphql()
-            discovery = await get_service_factory().discovery_service(graphql)
-            project = await get_service_factory().project_service(graphql, gh)
+            discovery = await get_service_factory().discovery_service(
+                graphql,
+                context=context,
+            )
+            project = await get_service_factory().project_service(
+                graphql,
+                gh,
+                context=context,
+            )
             metadata = await discovery.get_cached_or_discover()
             for item in await project.list_all_items(metadata):
                 if item.issue_number is not None:
@@ -538,9 +561,17 @@ async def project_items_consistency_check(params: ConsistencyCheckInput) -> dict
     """Compare expected field values with the live Project V2 board."""
     try:
         graphql = await get_service_factory().graphql()
-        gh = get_service_factory().gh()
-        discovery = await get_service_factory().discovery_service(graphql)
-        project = await get_service_factory().project_service(graphql, gh)
+        context = project_context(params.project_number)
+        gh = get_service_factory().gh(context=context)
+        discovery = await get_service_factory().discovery_service(
+            graphql,
+            context=context,
+        )
+        project = await get_service_factory().project_service(
+            graphql,
+            gh,
+            context=context,
+        )
         metadata = await discovery.get_cached_or_discover()
         items = await project.list_all_items(metadata)
         by_key = {str(i.issue_number): i for i in items}
