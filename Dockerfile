@@ -17,17 +17,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 ARG TARGETARCH
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && apt-get install -y --no-install-recommends curl ca-certificates libzstd1=1.5.7+dfsg-1+deb13u1 \
     && case "${TARGETARCH:-amd64}" in \
-         amd64) gh_arch=amd64; gh_sha256=98cb101ad87dbbd3f6b2f2bfcbd43197ccd07643140121d8a9cfaa91eadbc24e ;; \
-         arm64) gh_arch=arm64; gh_sha256=cb34cefc6f4e77b90731374a2b737516bb8f3033c6ca46aa949e5344f68069e3 ;; \
+         amd64) gh_arch=amd64; gh_sha256=79e7ab5db738c48777b696e374f8b428f0647debfb424f44d2f426370407fe2f ;; \
+         arm64) gh_arch=arm64; gh_sha256=b1278c75107423d818f1937fd92cafc9e5e9b606631568f68d7fb816f5885a02 ;; \
          *) echo "Unsupported gh architecture: ${TARGETARCH}" >&2; exit 1 ;; \
        esac \
-    && curl -fsSL "https://github.com/cli/cli/releases/download/v2.104.0/gh_2.104.0_linux_${gh_arch}.tar.gz" -o /tmp/gh.tar.gz \
+    && curl -fsSL "https://github.com/cli/cli/releases/download/v2.105.0/gh_2.105.0_linux_${gh_arch}.tar.gz" -o /tmp/gh.tar.gz \
     && echo "${gh_sha256}  /tmp/gh.tar.gz" | sha256sum -c - \
     && tar -xzf /tmp/gh.tar.gz -C /tmp \
-    && install -m 0755 "/tmp/gh_2.104.0_linux_${gh_arch}/bin/gh" /usr/local/bin/gh \
-    && rm -rf /tmp/gh.tar.gz "/tmp/gh_2.104.0_linux_${gh_arch}" \
+    && install -m 0755 "/tmp/gh_2.105.0_linux_${gh_arch}/bin/gh" /usr/local/bin/gh \
+    && rm -rf /tmp/gh.tar.gz "/tmp/gh_2.105.0_linux_${gh_arch}" \
     && apt-get purge -y curl \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
@@ -43,11 +43,17 @@ COPY requirements-dev.txt .
 COPY requirements-runtime.lock .
 COPY requirements-dev.lock .
 ARG INSTALL_TEST_DEPS=false
-RUN printf '%s\n' 'pip==26.2.2 --hash=sha256:fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70 --hash=sha256:3a8e5c800492787f33a4114ef54444546c340df428974ebba17e0fd47e11af2f' > /tmp/pip-bootstrap.lock \
+RUN printf '%s\n' 'pip==26.3 --hash=sha256:f3b60b20ffaadd4415ed7957212a38ac63fa4c5fa375bd0f4a797777940fad13 --hash=sha256:6c36ae7da8695be67e3cd9f7d87919667ced53f57ce2ede75d89b5912ed2bc4c' > /tmp/pip-bootstrap.lock \
     && pip install --no-cache-dir --require-hashes -r /tmp/pip-bootstrap.lock \
     && rm /tmp/pip-bootstrap.lock \
     && pip install --no-cache-dir --require-hashes -r requirements-runtime.lock \
-    && if [ "$INSTALL_TEST_DEPS" = "true" ]; then pip install --no-cache-dir --require-hashes -r requirements-dev.lock; fi
+    && if [ "$INSTALL_TEST_DEPS" = "true" ]; then \
+         pip install --no-cache-dir --require-hashes -r requirements-dev.lock; \
+       else \
+         site_packages="$(python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')" \
+         && rm -rf "$site_packages/pip" "$site_packages"/pip-*.dist-info \
+           /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.12; \
+       fi
 
 COPY --chown=mcp:mcp . .
 

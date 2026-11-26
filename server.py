@@ -128,7 +128,9 @@ from tools.deletes import (
     delete_label,
     delete_milestone,
 )
+from tools.meta.operational_metrics import get_operational_metrics
 from tools.meta.server_info import server_info
+from tools.meta.tool_discovery import search_tools
 from tools.pull_requests.listing import PULL_REQUEST_LISTING_TOOLS
 from tools.pull_requests.reviews import PULL_REQUEST_REVIEW_TOOLS
 from tools.repository_content import REPOSITORY_CONTENT_TOOLS
@@ -201,6 +203,7 @@ def create_http_app() -> Starlette:
             validate_tokens=settings.http_validate_tokens,
             auth_cache_ttl_seconds=settings.http_auth_cache_ttl_seconds,
             owner_login=settings.org_name if settings.owner_type == "auto" else "",
+            require_tls=settings.http_require_tls,
         )
     app.routes.insert(0, Route("/readyz", endpoint=_readyz, methods=["GET"]))
     app.routes.insert(0, Route("/healthz", endpoint=_healthz, methods=["GET"]))
@@ -303,8 +306,10 @@ _ALL_TOOLS: list = [
     create_project_field,
     link_repository,
     list_projects,
-    # Diagnostics (issue #34).
+    # Diagnostics and compact operational discovery.
     server_info,
+    search_tools,
+    get_operational_metrics,
     # Permanent-delete tools (issue #34) — only registered at 'full'.
     delete_project_item,
     delete_issue,

@@ -388,7 +388,7 @@ class TestStableToolSchemas:
         # move isolates the dependency bump from any tool addition.
         #
         # Rebaselined for the program-scale tool suite and compatibility
-        # additions in this PR. The registry grows from 154 to 168 tools;
+        # additions in this PR. The registry grows from 154 to 179 tools;
         # the new operations are additive, and add_item_to_project retains its
         # legacy issue_or_pr_number argument while accepting issue_number as an
         # alias. Optional repository and link-keyword fields preserve existing
@@ -396,9 +396,10 @@ class TestStableToolSchemas:
         # Rebaselined for the hardening/performance overhaul: list_project_items
         # gained the documented due_date_op/include_body selectors, the two orphan
         # capability-suite tools are now registered, and the DevOps surface gained
-        # release/deployment/artifact/environment/cancel tools. The digest is
+        # release/deployment/artifact/environment/cancel tools, plus compact
+        # tool discovery and operational metrics. The digest is
         # updated together with the documented protocol change.
-        assert digest == "14ffc69346beb066983f68d9944d3c8f2a7270f14fe7025374e447bc5e4a25ef", (
+        assert digest == "e557971114269273118dd5058c2d72d7a7cc63f3c1682dec4fe1e5dfb4f1437b", (
             f"Stable tool schema digest changed: {digest}. "
             "Update intentionally and document the protocol change."
         )

@@ -22,7 +22,7 @@ Run the preflight check to validate all prerequisites:
 
 The MCP resolves credentials in a strict priority chain. The first valid token wins:
 
-```
+```text
 ┌─────────────────────────────────────────────────────────┐
 │  1. GITHUB_TOKEN env var (highest priority)             │
 │  2. GH_TOKEN env var (fallback)                         │
@@ -31,6 +31,7 @@ The MCP resolves credentials in a strict priority chain. The first valid token w
 ```
 
 **Design invariants:**
+
 - Tokens are NEVER persisted in files tracked by git
 - Tokens are NEVER printed to stdout, logs, or diagnostics
 - The MCP validates scopes at startup and fails fast with actionable messages
@@ -94,7 +95,7 @@ The MCP container includes `gh` internally. When no `GITHUB_TOKEN` env var is se
 | `project` | Project board read/write (items, fields, status) |
 | `read:org` | Organization membership resolution |
 
-4. Copy the token immediately (shown only once)
+1. Copy the token immediately (shown only once)
 
 ### Fine-Grained Personal Access Token
 
@@ -192,7 +193,7 @@ query variant:
 > mode. If detection cannot run (no `gh`, no auth, or a network error) the
 > server falls back to `organization` and logs a hint to set
 > `GH_PROJECT_OWNER_TYPE=user`.
-
+>
 > **Startup exit codes.** A missing or invalid setting (no target fields, an
 > unknown `MCP_ACCESS_LEVEL`, a malformed number) is reported as a single
 > `Configuration error: …` line on stderr, after the explanatory help block,
@@ -207,7 +208,7 @@ number outside the allowlist before making an API call. Read
 [Multiple Project V2 boards](MULTI_PROJECTS.md) before enabling writes across
 boards.
 
-#### Board field defaults
+### Board field defaults
 
 When `create_project_item` (default) or `update_project_item_fields` with
 `apply_defaults: true` runs, any board field the caller omits is filled from
@@ -298,6 +299,7 @@ docker run --rm -i \
 ```
 
 <a id="ide-integration"></a>
+
 ### HTTP transport
 
 Set `MCP_TRANSPORT=streamable-http` to run the server over FastMCP's stateless
@@ -339,11 +341,19 @@ logs, or a global cache.
 | `MCP_HTTP_RATE_LIMIT_PER_MINUTE` | `240` | Per-client request budget keyed by token fingerprint, falling back to remote address |
 | `MCP_HTTP_VALIDATE_TOKENS` | `true` | Validate bearer tokens against GitHub before exposing MCP metadata; verdicts are cached by token fingerprint, never by raw token |
 | `MCP_HTTP_AUTH_CACHE_TTL_SECONDS` | `60` | Positive validation cache TTL; negative verdicts use a shorter cache window |
+| `MCP_HTTP_REQUIRE_TLS` | `false` | Reject non-loopback plaintext HTTP unless the request is HTTPS or the first `X-Forwarded-Proto` hop is `https` |
 
 A missing/malformed bearer, wrong client key, or rejected prefix returns `401`
 with `WWW-Authenticate: Bearer` and a generic JSON body. The default GitHub
 prefixes intentionally reject classic `ghp_` tokens; override them only when
 there is a documented token format requirement.
+
+For internet-facing or shared HTTP deployments, terminate TLS at a reverse proxy,
+set `MCP_HTTP_REQUIRE_TLS=true`, and configure the proxy to overwrite (not merely
+append) `X-Forwarded-Proto` so remote clients cannot spoof the HTTPS signal.
+Loopback development requests remain usable for local testing; non-loopback
+plaintext requests receive `403 {"error":"tls_required"}`. Do not expose the
+MCP port directly without TLS, bearer validation, a client key, and rate limits.
 
 LibreChat can send a per-user PAT through request headers:
 
@@ -389,11 +399,16 @@ repository files, tokens, and error text are deliberately not span attributes.
 If tracing setup or exporter initialization fails, the server logs a warning and
 continues with tracing disabled rather than failing startup.
 
+For a lightweight local alternative, `get_operational_metrics` returns aggregate
+in-process latency/error series per tool plus HTTP and GitHub rate-limit counters.
+The registry is metadata-only and resets on restart; it stores no arguments,
+repository content, tokens, or error messages.
+
 ### Role-based tool profiles
 
 `MCP_ACCESS_LEVEL` remains the hard read/write/delete boundary. On top of it,
 `MCP_TOOL_PROFILE` narrows the visible catalog so a client sees the tools that
-match its operator's job instead of the entire 177-tool surface. A profile can
+match its operator's job instead of the entire 179-tool surface. A profile can
 only reduce exposure; it never grants writes or deletes denied by the access
 level.
 
@@ -546,7 +561,8 @@ Run before publishing or sharing the repository:
 ### Cache Isolation
 
 Each target gets its own cache directory:
-```
+
+```text
 ~/.cache/github-project-mcp/{org}/{repo}/project-{N}/metadata.json
 ```
 

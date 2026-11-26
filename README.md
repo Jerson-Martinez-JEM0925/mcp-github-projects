@@ -13,7 +13,7 @@ sprint/planning workflows. Built with **Python 3.12** and **FastMCP 4.x**, it
 speaks stdio JSON-RPC or optional stateless Streamable HTTP and runs entirely
 inside a **standalone Docker container** — no host toolchain required beyond Docker.
 
-The server exposes **177 tools at `MCP_ACCESS_LEVEL=full`**: operational
+The server exposes **179 tools at `MCP_ACCESS_LEVEL=full`**: operational
 primitives, CI/DevOps integration, repository/project quality reports, and
 higher-level planning capabilities. Role profiles can deliberately narrow that
 catalog for developers, DevOps operators, project managers, commenters, or
@@ -173,7 +173,7 @@ in the JSON.
 
 ## Tool Catalog
 
-The server registers **177 tools** at `MCP_ACCESS_LEVEL=full` and `MCP_TOOL_PROFILE=full` (fewer at lower access levels or narrower role profiles). A category overview — the generated, per-tool catalog is [docs/TOOLS.md](docs/TOOLS.md):
+The server registers **179 tools** at `MCP_ACCESS_LEVEL=full` and `MCP_TOOL_PROFILE=full` (fewer at lower access levels or narrower role profiles). A category overview — the generated, per-tool catalog is [docs/TOOLS.md](docs/TOOLS.md):
 
 | Category | What it covers | Representative tools |
 |----------|----------------|----------------------|
@@ -253,7 +253,9 @@ installed only from generated `requirements-runtime.lock` /
 `requirements-dev.lock` files with pip hash checking; direct requirements stay
 short and reviewable in `requirements*.txt`, while the locks pin the complete
 transitive tree. Regenerate them with `make lock` after intentionally changing
-dependencies. CI also runs Ruff, mypy, Bandit, pip-audit and a critical-severity Trivy image scan.
+dependencies. The production image removes pip after installation so the package
+manager and its vendored dependencies are not part of the runtime attack surface.
+CI also runs Ruff, mypy, Bandit, pip-audit and a high/critical-severity Trivy image scan.
 
 ---
 

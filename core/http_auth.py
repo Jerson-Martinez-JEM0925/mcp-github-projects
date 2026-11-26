@@ -11,6 +11,7 @@ from typing import Any
 from starlette.responses import JSONResponse
 
 from core.auth import request_token_scope
+from core.metrics import record_rate_limit
 
 ASGIApp = Callable[[dict[str, Any], Callable[..., Awaitable[Any]], Callable[..., Awaitable[Any]]], Awaitable[Any]]
 
@@ -35,6 +36,7 @@ class RequestBearerAuthMiddleware:
         validate_tokens: bool = False,
         auth_cache_ttl_seconds: int = 60,
         owner_login: str = "",
+        require_tls: bool = False,
     ) -> None:
         self.app = app
         self.protected_path = protected_path
@@ -45,6 +47,7 @@ class RequestBearerAuthMiddleware:
         self.validate_tokens = validate_tokens
         self.auth_cache_ttl_seconds = auth_cache_ttl_seconds
         self.owner_login = owner_login
+        self.require_tls = require_tls
         self._rate_windows: dict[str, tuple[float, int]] = {}
         self._token_validation: dict[str, tuple[float, bool]] = {}
 
@@ -62,6 +65,9 @@ class RequestBearerAuthMiddleware:
             key.lower(): value
             for key, value in scope.get("headers", [])
         }
+        if self.require_tls and not self._tls_or_loopback(scope, headers):
+            return await self._json_error(scope, receive, send, 403, "tls_required")
+
         content_length = headers.get(b"content-length", b"").decode("ascii", errors="ignore")
         if content_length.isdigit() and int(content_length) > self.max_body_bytes:
             return await self._json_error(scope, receive, send, 413, "payload_too_large")
@@ -75,6 +81,7 @@ class RequestBearerAuthMiddleware:
         if token:
             rate_key = "token:" + hashlib.sha256(token.encode("utf-8")).hexdigest()
         if not self._consume_rate_budget(rate_key):
+            record_rate_limit("http_client")
             return await self._json_error(scope, receive, send, 429, "rate_limited")
 
         if self.client_key and not hmac.compare_digest(
@@ -131,6 +138,18 @@ class RequestBearerAuthMiddleware:
                 if value[0] > now
             }
         return valid
+
+    def _tls_or_loopback(self, scope: dict[str, Any], headers: dict[bytes, bytes]) -> bool:
+        """Return true for TLS, a trusted TLS proxy signal, or loopback development."""
+        if str(scope.get("scheme", "")).lower() == "https":
+            return True
+        forwarded = headers.get(b"x-forwarded-proto", b"").decode("ascii", errors="ignore")
+        first_hop = forwarded.split(",", 1)[0].strip().lower()
+        if first_hop == "https":
+            return True
+        client = scope.get("client")
+        host = str(client[0]) if isinstance(client, (tuple, list)) and client else ""
+        return host in {"127.0.0.1", "::1", "localhost"}
 
     def _consume_rate_budget(self, key: str) -> bool:
         """Consume one fixed-window request slot for a client/token fingerprint."""

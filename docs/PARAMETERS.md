@@ -22,7 +22,6 @@ scope-lock behavior, Docker configuration, and migration guidance.
 
 ---
 
-
 Discovers project ID, field IDs, and option IDs from the GitHub Project V2 API.
 
 | Parameter | Type | Required | Default | Description |
@@ -512,6 +511,8 @@ These values apply across all tools and are configured at the server level.
 | HTTP rate limit | `240/min` | From `MCP_HTTP_RATE_LIMIT_PER_MINUTE`; per-client budget keyed by token fingerprint or remote address |
 | HTTP token validation | `true` | From `MCP_HTTP_VALIDATE_TOKENS`; validates bearers before exposing MCP metadata, caching verdicts by fingerprint |
 | HTTP auth cache | `60s` | From `MCP_HTTP_AUTH_CACHE_TTL_SECONDS`; positive validation TTL, with shorter negative caching |
+| HTTP TLS enforcement | `false` | From `MCP_HTTP_REQUIRE_TLS`; when true, non-loopback plaintext HTTP is rejected unless the request scheme or first `X-Forwarded-Proto` hop is HTTPS |
+| Circuit breaker | `5` failures / `30s` reset | `GH_PROJECT_CIRCUIT_BREAKER_FAILURES` and `GH_PROJECT_CIRCUIT_BREAKER_RESET_SECONDS`; bounds repeated transient GitHub API failures per credential fingerprint |
 | Log level/format | `WARNING`/`text` | `MCP_LOG_LEVEL` and `MCP_LOG_FORMAT`; `DEBUG` enables per-tool latency logs, `json` emits one structured object per line |
 | OpenTelemetry tracing | disabled | `MCP_OTEL_ENABLED`, `MCP_OTEL_SERVICE_NAME`, `MCP_OTEL_EXPORTER_OTLP_ENDPOINT`; spans contain only tool/access/correlation metadata, never arguments or secrets |
 | Estimate range | `0.25–9999` | Valid numeric range for time estimates in hours |

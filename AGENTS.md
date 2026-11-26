@@ -247,6 +247,11 @@ before opening/updating the PR. Keep the PR focused on one issue.
 behavior, update the relevant docs (`README.md`, `docs/**`, and this file if the
 workflow changes) in the *same* PR. No undocumented tooling.
 
+**Docs validation is part of the PR contract.** Pull requests that touch
+`docs/**`, `.markdownlint.yml`, `.github/mlc-config.json`, or
+`.github/workflows/docs-wiki-sync.yaml` run pinned markdownlint and link checks.
+The wiki mirror itself runs only on `main` pushes or manual dispatch.
+
 **Before proposing a PR** — run `make validate`, confirm a clean pass, and verify
 that every required GitHub Actions check has completed successfully. Pending,
 failed, or missing checks block delivery as ready to review.

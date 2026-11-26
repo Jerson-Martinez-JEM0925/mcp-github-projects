@@ -84,7 +84,7 @@ typecheck: ## Run mypy on the hardened core/client boundary
 	@docker run --rm $(TEST_IMAGE) mypy \
 		clients/graphql_client.py clients/rest_client.py clients/resource_cache.py \
 		clients/gh_cli_client.py core/config.py core/http_auth.py core/observability.py \
-		core/context.py
+		core/context.py core/metrics.py core/circuit_breaker.py
 
 .PHONY: security
 security: ## Run Bandit and pip-audit in the test image
@@ -115,7 +115,8 @@ call: _check_env ## Call one MCP tool over stdio: make call TOOL=list_labels ARG
 # ── Security ─────────────────────────────────────────────────────────────────
 .PHONY: secrets
 secrets: ## Scan for leaked credentials in source tree
-	@bash scripts/scan_secrets.sh
+	@docker build -t $(IMAGE) .
+	@docker run --rm -u root -v "$(CURDIR):/app" -w /app $(IMAGE) bash scripts/scan_secrets.sh
 
 .PHONY: preflight
 preflight: ## Check host prerequisites (Docker, token, image)

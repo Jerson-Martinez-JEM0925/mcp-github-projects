@@ -96,7 +96,7 @@ jobs:
           docker run --rm github-project-mcp:test mypy --no-incremental
           clients/graphql_client.py clients/rest_client.py clients/resource_cache.py
           clients/gh_cli_client.py core/config.py core/http_auth.py core/observability.py
-          core/context.py
+          core/context.py core/metrics.py core/circuit_breaker.py
       - name: Run Bandit security scan
         run: docker run --rm github-project-mcp:test bandit -r . -x ./tests,./docs,./profiles -ll -ii
       - name: Audit Python dependencies
@@ -114,13 +114,13 @@ jobs:
           name: mcp-image
       - name: Load image
         run: docker load < image.tar.gz
-      - name: Scan image for critical vulnerabilities
+      - name: Scan image for high and critical vulnerabilities
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
           image-ref: ${{ env.IMAGE }}
           format: table
           exit-code: '1'
-          severity: CRITICAL
+          severity: HIGH,CRITICAL
           ignore-unfixed: true
 
   tools:

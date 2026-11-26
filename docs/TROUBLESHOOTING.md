@@ -22,13 +22,15 @@ Exit code `1` is different: it means token/scope validation failed (see below).
 ## Invalid Token
 
 **Symptom:** The MCP server exits at startup with the error:
-```
+
+```text
 Error: The provided token is invalid or expired. Please provide a valid GitHub token via GITHUB_TOKEN or GH_TOKEN environment variable, or authenticate via `gh auth login`.
 ```
 
 **Cause:** The token configured in `GITHUB_TOKEN` (or `GH_TOKEN`) was revoked, has expired, or the environment variable name is incorrect. This can also happen if a fine-grained token's expiration date has passed.
 
 **Resolution:**
+
 1. Generate a new Personal Access Token at [github.com/settings/tokens](https://github.com/settings/tokens)
 2. Ensure the token has `repo`, `project`, and `read:org` scopes (classic) or equivalent permissions (fine-grained)
 3. Update the `.env` file with the new token value in the `GITHUB_TOKEN` variable
@@ -39,13 +41,15 @@ Error: The provided token is invalid or expired. Please provide a valid GitHub t
 ## Insufficient Scopes
 
 **Symptom:** The MCP server exits at startup with the error:
-```
+
+```text
 Error: Insufficient token scopes. Missing scopes: project, read:org. Required scopes: repo, project, read:org.
 ```
 
 **Cause:** The token is valid but lacks one or more required OAuth scopes. The server requires `repo` (for issue operations), `project` (for Projects V2 mutations), and `read:org` (for organization project access).
 
 **Resolution:**
+
 1. Navigate to your token settings at [github.com/settings/tokens](https://github.com/settings/tokens)
 2. Edit the token or generate a new one with all three required scopes: `repo`, `project`, `read:org`
 3. Update the `.env` file with the corrected token
@@ -56,6 +60,7 @@ Error: Insufficient token scopes. Missing scopes: project, read:org. Required sc
 ## Rate Limiting
 
 **Symptom:** A tool invocation returns an error response with `error_type: "rate_limit"` and includes a reset timestamp:
+
 ```json
 {
   "ok": false,
@@ -68,6 +73,7 @@ Error: Insufficient token scopes. Missing scopes: project, read:org. Required sc
 **Cause:** The authenticated user has exceeded the GitHub API rate limit (5,000 requests per hour for authenticated requests). This typically happens during heavy automation or rapid successive tool calls.
 
 **Resolution:**
+
 1. Wait until the reset timestamp indicated in the error response
 2. Check current rate limit status: `gh api rate_limit`
 3. Reduce request frequency if hitting limits regularly
@@ -78,6 +84,7 @@ Error: Insufficient token scopes. Missing scopes: project, read:org. Required sc
 ## Non-existent Item IDs
 
 **Symptom:** A tool invocation returns an error response with `error_type: "not_found"`:
+
 ```json
 {
   "ok": false,
@@ -90,6 +97,7 @@ Error: Insufficient token scopes. Missing scopes: project, read:org. Required sc
 **Cause:** The provided project item node ID does not correspond to an existing item. The item may have been deleted, permanently archived, or the ID is malformed or from a different project.
 
 **Resolution:**
+
 1. Run `list_project_items` to get current valid item IDs
 2. Run `discover_ids` to refresh the project metadata cache
 3. Verify the node ID format (should start with `PVTI_` for project items)
@@ -100,6 +108,7 @@ Error: Insufficient token scopes. Missing scopes: project, read:org. Required sc
 ## Permission Errors
 
 **Symptom:** A tool invocation returns an error response with `error_type: "authentication"` after the server has started successfully:
+
 ```json
 {
   "ok": false,
@@ -112,6 +121,7 @@ Error: Insufficient token scopes. Missing scopes: project, read:org. Required sc
 **Cause:** The token has the required scopes at the GitHub level but lacks access to the specific organization, repository, or project. This commonly occurs with fine-grained tokens that are scoped to specific repositories, or when the user is not a member of the organization.
 
 **Resolution:**
+
 1. Verify you are a member of the target organization
 2. If using a fine-grained token, check that it grants access to the target repository
 3. Ensure the token's resource access includes the target project
@@ -123,6 +133,7 @@ Error: Insufficient token scopes. Missing scopes: project, read:org. Required sc
 ## Network Failures
 
 **Symptom:** A tool invocation returns an error response with `error_type: "internal"` and a timeout or connectivity message:
+
 ```json
 {
   "ok": false,
@@ -135,6 +146,7 @@ Error: Insufficient token scopes. Missing scopes: project, read:org. Required sc
 **Cause:** The request to the GitHub API failed due to network unavailability, DNS resolution failure, or a GitHub API outage. For read operations, the server retries timeout failures according to `GH_PROJECT_RETRY_ATTEMPTS` with exponential backoff from `GH_PROJECT_RETRY_DELAY_SECONDS`. Mutations are never retried to avoid duplicate side effects.
 
 **Resolution:**
+
 1. Check your network connectivity (DNS resolution, firewall rules)
 2. Verify GitHub API status at [githubstatus.com](https://www.githubstatus.com)
 3. For read operations: retry the tool call after 30 seconds
@@ -146,6 +158,7 @@ Error: Insufficient token scopes. Missing scopes: project, read:org. Required sc
 ## DraftIssue Close Rejection
 
 **Symptom:** The `close_issue` tool returns a validation error:
+
 ```json
 {
   "ok": false,
@@ -158,6 +171,7 @@ Error: Insufficient token scopes. Missing scopes: project, read:org. Required sc
 **Cause:** The `close_issue` tool was called on a project item that is a DraftIssue. Draft issues exist only within the project board and have no corresponding GitHub issue that can be opened or closed.
 
 **Resolution:**
+
 1. Convert the DraftIssue to a full issue first (via the GitHub UI or by creating an issue with the same content)
 2. After conversion, the item will have an issue number and can be closed normally
 3. Alternatively, archive the draft item using `archive_project_item` if it should be removed from the board
@@ -179,7 +193,7 @@ Error: Insufficient token scopes. Missing scopes: project, read:org. Required sc
 Every error envelope has a `correlation_id` (12 hex characters). The server
 prints the same ID at the start of each stderr log line of that call:
 
-```
+```text
 ERROR [f805e839ca90 get_issue_detail] tools.issues.advanced_operations: CLI error in get_issue_detail: ...
 ```
 
@@ -194,6 +208,7 @@ when escalating to GitHub support.
 **Cause:** The cache is expired, has a future `discovered_at`, is malformed, or belongs to a different organization/project number.
 
 **Resolution:**
+
 1. Run `discover_ids(force=true)` to obtain fresh metadata.
 2. Check `GH_PROJECT_CACHE_PATH` and ensure its parent directory is writable by the MCP user.
 3. Do not copy cache files between organizations or projects.
@@ -248,6 +263,7 @@ still have been applied, so treating the response as success would lose the
 identifier needed for reconciliation.
 
 **Resolution:**
+
 1. Do not retry the mutation immediately.
 2. Use `list_pull_requests` or `get_pull_request_detail` to check whether the
    PR exists and identify its number and URL.
@@ -261,6 +277,7 @@ identifier needed for reconciliation.
 **Cause:** in request-auth mode the bearer is checked before MCP metadata is exposed. In addition to client-key and prefix checks, `MCP_HTTP_VALIDATE_TOKENS=true` validates the token against GitHub (`GET /user`) and caches only the token fingerprint and verdict.
 
 **Resolution:**
+
 1. Verify the token format is allowed by `MCP_ALLOWED_TOKEN_PREFIXES`.
 2. Verify `X-MCP-Client-Key` when `MCP_CLIENT_KEY` is configured.
 3. Confirm the token is active in GitHub and has not expired or been revoked.

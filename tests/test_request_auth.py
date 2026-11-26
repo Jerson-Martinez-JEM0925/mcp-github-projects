@@ -285,3 +285,20 @@ def test_http_auto_owner_type_is_primed_with_request_token(monkeypatch: pytest.M
 
     asyncio.run(exercise())
     assert calls == [("ExampleOrg", "ghu_valid")]
+
+
+def test_http_tls_requirement_allows_loopback_and_proxy_https_only() -> None:
+    """Optional TLS enforcement rejects plaintext non-loopback remote deployment."""
+    async def echo(_request):
+        return JSONResponse({"ok": True})
+
+    app = Starlette(routes=[Route("/mcp", echo, methods=["POST"])])
+    middleware = RequestBearerAuthMiddleware(app, protected_path="/mcp", require_tls=True)
+
+    assert middleware._tls_or_loopback({"scheme": "https", "client": ("10.0.0.1", 1)}, {})
+    assert middleware._tls_or_loopback({"scheme": "http", "client": ("127.0.0.1", 1)}, {})
+    assert middleware._tls_or_loopback(
+        {"scheme": "http", "client": ("10.0.0.1", 1)},
+        {b"x-forwarded-proto": b"https,http"},
+    )
+    assert not middleware._tls_or_loopback({"scheme": "http", "client": ("10.0.0.1", 1)}, {})

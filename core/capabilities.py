@@ -237,6 +237,8 @@ TOOL_CAPABILITIES: dict[str, FrozenSet[Capability]] = {
 
     # --- Diagnostics ---
     "server_info": frozenset(),
+    "search_tools": frozenset(),
+    "get_operational_metrics": frozenset(),
 
     # --- Repository & Project provisioning ---
     "create_repository": frozenset({IW}),

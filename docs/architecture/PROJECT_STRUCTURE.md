@@ -6,14 +6,14 @@ that a contributor (human or LLM) can place a new tool, module, or test correctl
 the first try, without reverse-engineering the layout.
 
 > **Scope:** organization and naming only. This document describes *structure*, not
-> behavior. The set of client-facing MCP tool names and the total tool count (**177**)
-> are an external contract — see [Invariants](#invariants).
+> behavior. The set of client-facing MCP tool names and the total tool count (**179**)
+> are an external contract — see [Invariants](#6-invariants-do-not-break).
 
 ---
 
 ## 1. Directory Layout
 
-```
+```text
 mcp-github-projects/
 ├── server.py                # MCP entry point: builds FastMCP, registers every tool
 ├── __main__.py              # `python -m` shim → server.main()
@@ -31,6 +31,8 @@ mcp-github-projects/
 │   ├── hardening.py         # Input parsing, redaction, atomic writes
 │   ├── profiles.py          # Named env-profile loading
 │   ├── observability.py     # Optional metadata-only OpenTelemetry spans
+│   ├── metrics.py           # Bounded in-process tool/rate-limit metrics
+│   ├── circuit_breaker.py   # Credential-scoped breaker for transient GitHub failures
 │   └── capabilities.py      # Tool → required-capability mapping (contract-checked)
 │
 ├── clients/                 # Thin transport wrappers over external systems
@@ -65,7 +67,7 @@ mcp-github-projects/
 │   ├── fields/              # Field, estimate, label, milestone writes
 │   ├── planning/            # Sprint planning, workflows, release notes
 │   ├── bulk/                # Multi-item batch operations & search
-│   └── meta/                # Stats, PR helpers, and the capability suite
+│   └── meta/                # Stats, PR helpers, discovery/metrics, and capability suite
 │
 ├── tests/                   # pytest suite (mirrors module names: test_<area>.py)
 ├── scripts/                 # Operational helpers (validate, count, mcp_call, …)
@@ -118,7 +120,7 @@ Rules:
 
 ## 3. Tool Taxonomy
 
-The 177 tools group into these categories. A tool's category determines its
+The 179 tools group into these categories. A tool's category determines its
 `tools/<category>/` home and the doc section it belongs to.
 
 | Category | `tools/` home | Responsibility | Representative tools |
@@ -130,7 +132,7 @@ The 177 tools group into these categories. A tool's category determines its
 | **fields** | `tools/fields/` | Field/estimate/label/milestone writes | `set_estimate`, `create_label`, `list_labels`, `create_milestone`, `close_milestone`, `list_milestones` |
 | **planning** | `tools/planning/` | Sprints, workflows, release notes, epics | `sprint_planning`, `generate_release_notes`, `create_epic`, `daily_standup`, `sprint_review`, `close_sprint`, `triage_new_issues` |
 | **discovery/bulk** | `tools/bulk/` | Batch operations + search across many items | `bulk_close_issues`, `bulk_update_items`, `search_issues`, `bulk_assign` |
-| **meta** | `tools/meta/` | Reports/stats, PR-create helpers, and the 62-tool capability suite | `get_project_stats`, `get_sprint_summary`, `create_pull_request`, `update_pull_request`, `link_pull_request`, plus `capability_suite.CAPABILITY_TOOL_NAMES` |
+| **meta** | `tools/meta/` | Reports/stats, PR helpers, compact discovery/metrics, and the 62-tool capability suite | `get_project_stats`, `get_sprint_summary`, `create_pull_request`, `update_pull_request`, `link_pull_request`, plus `capability_suite.CAPABILITY_TOOL_NAMES` |
 
 > The **capability suite** (`tools/meta/capability_suite.py`) holds 62 read/analysis/
 > text-processing tools registered via `CAPABILITY_TOOL_NAMES`. It is a category of its
@@ -147,6 +149,7 @@ a registered tool has no capability mapping.
 
 1. **Pick the category** from the taxonomy above and open `tools/<category>/`.
 2. **Add the function** to the most relevant module (or a new module — see recipe 5):
+
    ```python
    from pydantic import BaseModel
    from core.error_handling import build_error_response, handle_tool_error
@@ -166,6 +169,7 @@ a registered tool has no capability mapping.
        except Exception as exc:  # narrow in real code
            return handle_tool_error(exc)
    ```
+
    Follow the existing arg convention of the sibling tools in that module
    (`params`-wrapped vs flat — see `docs/PARAMETERS.md`).
 3. **Register it in `server.py`**: import the function and append it to `_ALL_TOOLS`.

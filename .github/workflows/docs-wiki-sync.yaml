@@ -1,15 +1,25 @@
 ---
 # Docs — Wiki Sync
-# On push to main touching docs/**, validate the Markdown (markdownlint +
-# link check) then mirror docs/ into the repository Wiki. Links are stripped
-# of their trailing .md so they resolve as Wiki page names.
+# Validate Markdown on pull requests and pushes to main (markdownlint +
+# link check). On main pushes, mirror docs/ into the repository Wiki. Links
+# are stripped of their trailing .md suffix so they resolve as Wiki page names.
 name: Docs — Wiki Sync
 run-name: 'Wiki Sync — ${{ github.ref_name }}'
 
 on:
   push:
     branches: [main]
-    paths: ['docs/**']
+    paths:
+      - 'docs/**'
+      - '.markdownlint.yml'
+      - '.github/mlc-config.json'
+      - '.github/workflows/docs-wiki-sync.yaml'
+  pull_request:
+    paths:
+      - 'docs/**'
+      - '.markdownlint.yml'
+      - '.github/mlc-config.json'
+      - '.github/workflows/docs-wiki-sync.yaml'
   workflow_dispatch:
 
 permissions:
@@ -38,22 +48,21 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Markdown lint
         run: |
-          npx --yes markdownlint-cli2 "${DOCS_DIR}/**/*.md"
+          npx --yes markdownlint-cli2@0.24.1 --config .markdownlint.yml "${DOCS_DIR}/**/*.md"
 
       - name: Link check
         run: |
-          npx --yes markdown-link-check --quiet --config .github/mlc-config.json \
-            $(find "${DOCS_DIR}" -name '*.md' -type f) 2>/dev/null || \
-          find "${DOCS_DIR}" -name '*.md' -type f -print0 | \
-            xargs -0 -n1 npx --yes markdown-link-check --quiet
+          npx --yes markdown-link-check@3.15.0 --quiet --config .github/mlc-config.json \
+            $(find "${DOCS_DIR}" -name '*.md' -type f)
 
   sync:
     name: Sync to Wiki
     needs: validate
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

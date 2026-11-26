@@ -16,8 +16,10 @@ from typing import Any
 
 import httpx
 
+from core.circuit_breaker import CircuitOpenError, github_circuit_breaker
 from core.config import get_settings
 from core.hardening import bounded_text
+from core.metrics import record_rate_limit
 from models.context import GitHubContext
 
 _GITHUB_API_URL = "https://api.github.com"
@@ -93,6 +95,11 @@ class GitHubRESTClient:
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
         }
+        breaker = github_circuit_breaker(token)
+        try:
+            breaker.before_call()
+        except CircuitOpenError as exc:
+            raise RESTError(str(exc), retry_after=exc.retry_after) from exc
         try:
             response = await client.request(
                 method.upper(),
@@ -102,8 +109,10 @@ class GitHubRESTClient:
                 headers=headers,
             )
         except httpx.TimeoutException as exc:
+            breaker.record_failure()
             raise RESTError(f"GitHub REST request timed out after {settings.timeout_seconds}s") from exc
         except httpx.RequestError as exc:
+            breaker.record_failure()
             raise RESTError(f"GitHub REST request failed: {bounded_text(exc)}") from exc
 
         retry_after: float | None = None
@@ -112,6 +121,16 @@ class GitHubRESTClient:
                 retry_after = max(0.0, float(response.headers["Retry-After"]))
             except ValueError:
                 retry_after = None
+        if response.status_code in {408, 425, 429} or response.status_code >= 500:
+            breaker.record_failure()
+            if response.status_code == 429:
+                record_rate_limit("github_api")
+        else:
+            breaker.record_success()
+        if response.status_code == 403 and (
+            response.headers.get("X-RateLimit-Remaining") == "0" or response.headers.get("Retry-After")
+        ):
+            record_rate_limit("github_api")
         if response.status_code >= 400:
             detail = ""
             try:

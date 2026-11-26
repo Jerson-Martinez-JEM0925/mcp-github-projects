@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -261,3 +262,111 @@ def test_gh_api_graphql_and_unknown_flags_fall_back_to_real_cli() -> None:
     assert asyncio.run(client._rest_label_list(
         MagicMock(), ["label", "list", "--repo", "octo/repo", "--sort", "created"]
     )) is None
+
+
+def test_metrics_registry_records_latency_success_and_error_envelopes() -> None:
+    """Tool metrics expose aggregate latency metadata without arguments or payloads."""
+    from core.context import with_request_context
+    from core.metrics import metrics_snapshot, reset_metrics
+
+    reset_metrics()
+
+    async def successful() -> dict:
+        return {"ok": True, "data": {"secret_argument": "not-stored"}}
+
+    async def app_error() -> dict:
+        return {"ok": False, "message": "sensitive detail must not be stored"}
+
+    async def exercise() -> None:
+        await with_request_context(successful, "metric_success", "read")()
+        await with_request_context(app_error, "metric_error", "read")()
+
+    asyncio.run(exercise())
+    snapshot = metrics_snapshot(limit=10)
+    assert snapshot["totals"]["calls"] == 2
+    assert snapshot["totals"]["errors"] == 1
+    by_name = {row["tool"]: row for row in snapshot["tools"]}
+    assert by_name["metric_success"]["errors"] == 0
+    assert by_name["metric_error"]["errors"] == 1
+    assert by_name["metric_success"]["calls"] == 1
+    assert "secret_argument" not in str(snapshot)
+    assert "sensitive detail" not in str(snapshot)
+    reset_metrics()
+
+
+def test_circuit_breaker_opens_and_admits_half_open_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Repeated transient failures open the circuit and prevent a request storm."""
+    from core.circuit_breaker import CircuitBreaker, CircuitOpenError
+
+    breaker = CircuitBreaker("github-test", failure_threshold=2, reset_timeout_seconds=30)
+    breaker.before_call()
+    breaker.record_failure()
+    breaker.before_call()
+    breaker.record_failure()
+    assert breaker.snapshot()["open"] is True
+    with pytest.raises(CircuitOpenError):
+        breaker.before_call()
+
+    monkeypatch.setattr(breaker, "reset_timeout_seconds", 0.001)
+    import time
+
+    time.sleep(0.002)
+    breaker.before_call()  # half-open probe
+    breaker.record_success()
+    assert breaker.snapshot()["open"] is False
+
+
+def test_operational_metrics_tool_returns_compact_snapshot() -> None:
+    """The metrics MCP surface reports counters without leaking invocation data."""
+    from core.metrics import record_rate_limit, record_tool_invocation, reset_metrics
+    from tools.meta.operational_metrics import GetOperationalMetricsInput, get_operational_metrics
+
+    reset_metrics()
+    record_tool_invocation("list_project_items", 42, ok=True)
+    record_rate_limit("github_api")
+    result = asyncio.run(get_operational_metrics(GetOperationalMetricsInput(limit=5)))
+    assert result["ok"] is True
+    assert result["data"]["rate_limits"]["github_api"] == 1
+    assert result["data"]["tools"][0]["tool"] == "list_project_items"
+    reset_metrics()
+
+
+def test_search_tools_uses_live_registry_and_returns_compact_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Compact discovery searches registered names without serializing schemas."""
+    from tools.meta.tool_discovery import SearchToolsInput, search_tools
+
+    class FakeMCP:
+        async def list_tools(self):
+            return [
+                SimpleNamespace(name="list_labels", description="List repository labels."),
+                SimpleNamespace(name="create_label", description="Create one repository label."),
+            ]
+
+    monkeypatch.delitem(sys.modules, "server", raising=False)
+    monkeypatch.setitem(sys.modules, "__main__", SimpleNamespace(mcp=FakeMCP()))
+
+    result = asyncio.run(search_tools(SearchToolsInput(query="label", access_tier="read", limit=10)))
+    assert result["ok"] is True
+    assert result["data"]["count"] == 1
+    assert result["data"]["tools"] == [
+        {
+            "name": "list_labels",
+            "access_tier": "read",
+            "capabilities": ["labels.read"],
+            "description": "List repository labels.",
+        }
+    ]
+
+
+def test_circuit_breaker_registry_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Credential-scoped breaker state cannot grow without bound in HTTP mode."""
+    import core.circuit_breaker as circuit_module
+
+    circuit_module.reset_circuit_breakers()
+    monkeypatch.setattr(circuit_module, "_MAX_BREAKERS", 2)
+    first = circuit_module.github_circuit_breaker("token-a")
+    circuit_module.github_circuit_breaker("token-b")
+    circuit_module.github_circuit_breaker("token-c")
+    assert len(circuit_module._BREAKERS) == 2
+    assert first.name not in circuit_module._BREAKERS
+    circuit_module.reset_circuit_breakers()

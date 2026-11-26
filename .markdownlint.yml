@@ -28,3 +28,7 @@ MD007:
 # MD004 unordered list style: dashes.
 MD004:
   style: 'dash'
+
+# MD060 table-column-style: project reference docs intentionally use compact
+# pipe tables; spacing every pipe creates noisy churn without improving rendering.
+MD060: false

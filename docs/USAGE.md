@@ -35,7 +35,7 @@ The main categories below; the extended capability suite (62 tools), repository/
 
 Discovers project node ID, all field IDs, and option values. Results are cached for 24h.
 
-```
+```text
 Input:  { "force": false }
 Output: { project_id, owner, project_number, fields: { Status: { id, options }, Priority: { id, options }, ... } }
 ```
@@ -44,7 +44,7 @@ Output: { project_id, owner, project_number, fields: { Status: { id, options }, 
 
 Lists items from the project board with optional filters.
 
-```
+```text
 Input:  { "status": "📌 To Do", "priority": "Urgent", "assignee": "octocat" }
 Output: { items: [{ node_id, title, issue_number, status, priority, milestone, due_date, assignees, labels,
                    fields: { "Status": "📌 To Do", "Phase": "F3", "Start": "2026-07-01", "Estimate (h)": 4 } }], count }
@@ -65,7 +65,7 @@ fields can be set at creation, and any omitted board field is filled with a
 configured default (`apply_defaults` is `true` by default) so an item never
 lands with empty custom fields.
 
-```
+```text
 Input:  { "title": "New feature", "body": "Description", "status": "In Progress",
           "priority": "High", "area": "server", "work_type": "Feature",
           "estimate": 5, "assignees": ["octocat"], "labels": ["🚀 Feature"],
@@ -89,7 +89,7 @@ IDs by name at runtime from discovery. Issue-level fields (`body`,
 Address the item by node ID **or** by issue/PR number (resolved on the board,
 owner-type aware — works on user- and organization-owned boards):
 
-```
+```text
 # By item node ID
 Input:  { "item_id": "PVTI_...", "fields": { "Status": "In Progress",
           "Priority": "Urgent", "Area": "server", "Estimate": 3,
@@ -145,7 +145,7 @@ Adds an existing issue or PR to the configured project board via
 board returns its existing id). Returns the project item node id, which you can
 pass straight to `update_project_item_fields`.
 
-```
+```text
 Input:  { "issue_or_pr_number": 42 }
 Output: { issue_or_pr_number, item_id }
 ```
@@ -154,7 +154,7 @@ Output: { issue_or_pr_number, item_id }
 
 Sets the time estimate (in hours) on a project item.
 
-```
+```text
 Input:  { "item_id": "PVTI_...", "value": 4.0 }
 Output: { item_id, estimate, field_id }
 ```
@@ -163,7 +163,7 @@ Output: { item_id, estimate, field_id }
 
 Removes an item from the active project board (archives it).
 
-```
+```text
 Input:  { "item_id": "PVTI_..." }
 Output: { item_id, status: "archived" }
 ```
@@ -172,7 +172,7 @@ Output: { item_id, status: "archived" }
 
 Shortcuts to move items to Done or Trash status.
 
-```
+```text
 Input:  { "item_id": "PVTI_..." }
 Output: { item_id, status: "Done" }
 ```
@@ -181,7 +181,7 @@ Output: { item_id, status: "Done" }
 
 Moves a project item to ANY status column.
 
-```
+```text
 Input:  { "item_id": "PVTI_...", "status": "🛠 In Progress" }
 Output: { item_id, status, message }
 ```
@@ -192,7 +192,7 @@ Output: { item_id, status, message }
 
 Updates fields on multiple project items at once.
 
-```
+```text
 Input:  { "item_ids": ["PVTI_...", "PVTI_..."], "fields": { "Priority": "Urgent", "Due date": "2026-08-01" } }
 Output: { results: [{ item_id, fields: [{ field, status }] }], total, fully_updated }
 ```
@@ -205,7 +205,7 @@ Output: { results: [{ item_id, fields: [{ field, status }] }], total, fully_upda
 
 Closes a GitHub issue (reason: completed).
 
-```
+```text
 Input:  { "issue_number": 258 }
 Output: { issue_number, state: "closed" }
 ```
@@ -214,7 +214,7 @@ Output: { issue_number, state: "closed" }
 
 Reopens a previously closed issue.
 
-```
+```text
 Input:  { "issue_number": 258 }
 Output: { issue_number, state: "open" }
 ```
@@ -223,7 +223,7 @@ Output: { issue_number, state: "open" }
 
 Adds a markdown comment to an issue.
 
-```
+```text
 Input:  { "issue_number": 258, "body": "Working on this now. ETA: 2 hours." }
 Output: { issue_number, comment_url }
 ```
@@ -232,7 +232,7 @@ Output: { issue_number, comment_url }
 
 Edits issue properties: title, body, milestone, labels, assignees.
 
-```
+```text
 Input:  { "issue_number": 258, "milestone": "Sprint 3", "add_labels": ["🔒 Security"], "add_assignees": ["hubot"] }
 Output: { issue_number, updated_fields }
 ```
@@ -243,7 +243,7 @@ Output: { issue_number, updated_fields }
 
 Gets complete issue details including sub-issues.
 
-```
+```text
 Input:  { "issue_number": 257 }
 Output: { number, title, body, state, labels, assignees, milestone, sub_issues: [{ number, title, state }], sub_issues_count }
 ```
@@ -252,7 +252,7 @@ Output: { number, title, body, state, labels, assignees, milestone, sub_issues: 
 
 Searches issues by text, labels, milestone, assignee, state.
 
-```
+```text
 Input:  { "query": "admin", "labels": ["🎨 FrontEnd"], "state": "open", "limit": 20 }
 Output: { issues: [{ number, title, state, labels, milestone, assignees }], count }
 ```
@@ -261,7 +261,7 @@ Output: { issues: [{ number, title, state, labels, milestone, assignees }], coun
 
 Closes multiple issues at once with optional comment.
 
-```
+```text
 Input:  { "issue_numbers": [80, 81, 82], "reason": "completed", "comment": "✅ Implemented in current version." }
 Output: { results: [{ issue, status }], total, closed }
 ```
@@ -270,7 +270,7 @@ Output: { results: [{ issue, status }], total, closed }
 
 Assigns multiple issues to users and/or milestone.
 
-```
+```text
 Input:  { "issue_numbers": [258, 259, 260], "assignees": ["hubot"], "milestone": "Sprint 2" }
 Output: { results, total, updated }
 ```
@@ -283,7 +283,7 @@ Output: { results, total, updated }
 
 Links a child issue as a sub-issue of a parent (formal GitHub sub-issue relationship).
 
-```
+```text
 Input:  { "parent_issue_number": 257, "child_issue_number": 258 }
 Output: { parent_issue, child_issue, message }
 ```
@@ -292,7 +292,7 @@ Output: { parent_issue, child_issue, message }
 
 Removes the sub-issue relationship between parent and child.
 
-```
+```text
 Input:  { "parent_issue_number": 257, "child_issue_number": 258 }
 Output: { parent_issue, child_issue, message }
 ```
@@ -301,7 +301,7 @@ Output: { parent_issue, child_issue, message }
 
 Lists all sub-issues of a parent issue.
 
-```
+```text
 Input:  { "issue_number": 257 }
 Output: { parent_issue, sub_issues: [{ number, title, state, assignees }], count }
 ```
@@ -311,7 +311,7 @@ Output: { parent_issue, sub_issues: [{ number, title, state, assignees }], count
 Lists real `blocked_by` and/or `blocking` relationships from GitHub's issue
 dependency API and returns normalized `{number, title, state, url}` entries.
 
-```
+```text
 Input:  { "issue_number": 26, "direction": "blocked_by" }
 Output: { "issue_number": 26, "blocked_by": [{ "number": 24, "title": "...", "state": "open", "url": "https://github.com/..." }], "blocking": [], "count": 1 }
 ```
@@ -321,7 +321,7 @@ Output: { "issue_number": 26, "blocked_by": [{ "number": 24, "title": "...", "st
 Adds a dependency and resolves the blocking issue's REST `id` internally.
 Calling it again returns success with `already_present: true`.
 
-```
+```text
 Input:  { "issue_number": 58, "blocked_by_issue_number": 39 }
 Output: { "issue_number": 58, "blocked_by_issue_number": 39, "already_present": false }
 ```
@@ -331,7 +331,7 @@ Output: { "issue_number": 58, "blocked_by_issue_number": 39, "already_present": 
 Removes a dependency. Calling it after removal returns success with
 `already_absent: true`.
 
-```
+```text
 Input:  { "issue_number": 58, "blocked_by_issue_number": 39 }
 Output: { "issue_number": 58, "blocked_by_issue_number": 39, "already_absent": false }
 ```
@@ -348,7 +348,7 @@ level.
 
 Creates a new milestone with optional description and due date.
 
-```
+```text
 Input:  { "title": "Sprint 13 - Sep 28", "description": "Post-launch fixes", "due_date": "2026-09-28" }
 Output: { number, title, html_url }
 ```
@@ -361,7 +361,7 @@ midnight UTC; pass `null` or an empty string to remove the date. `state` must
 be `open` or `closed`. Optional `owner` and `repo` overrides respect
 `GH_PROJECT_SCOPE_LOCK`.
 
-```
+```text
 Input:  { "milestone_number": 5, "due_on": "2026-11-18" }
 Output: { number, title, description, state, due_on, html_url, updated_fields, message }
 ```
@@ -370,7 +370,7 @@ Output: { number, title, description, state, due_on, html_url, updated_fields, m
 
 Closes an open milestone by title.
 
-```
+```text
 Input:  { "title": "Sprint 1" }
 Output: { number, title, state: "closed" }
 ```
@@ -379,7 +379,7 @@ Output: { number, title, state: "closed" }
 
 Lists milestones filtered by state.
 
-```
+```text
 Input:  { "state": "open" }
 Output: { milestones: [{ number, title, state, due_on, open_issues, closed_issues }], count }
 ```
@@ -392,7 +392,7 @@ Output: { milestones: [{ number, title, state, due_on, open_issues, closed_issue
 
 Creates or updates a label with name and hex color.
 
-```
+```text
 Input:  { "name": "🔥 Hotfix", "color": "d93f0b", "description": "Critical production fix" }
 Output: { name, color, message }
 ```
@@ -401,7 +401,7 @@ Output: { name, color, message }
 
 Lists all labels in the repository.
 
-```
+```text
 Input:  { "limit": 50 }
 Output: { labels: [{ name, color, description }], count }
 ```
@@ -414,7 +414,7 @@ Output: { labels: [{ name, color, description }], count }
 
 Gets overall project statistics: issues per sprint, progress percentage.
 
-```
+```text
 Input:  {}
 Output: { total_open_issues, total_closed_issues, overall_progress_pct, sprints: [{ title, open_issues, closed_issues, progress_pct, due_on }] }
 ```
@@ -423,7 +423,7 @@ Output: { total_open_issues, total_closed_issues, overall_progress_pct, sprints:
 
 Detailed summary of a specific sprint: issues, progress, assignee distribution, days remaining.
 
-```
+```text
 Input:  { "milestone_title": "Sprint 2" }
 Output: { milestone, due_on, days_remaining, total_issues, open, closed, progress_pct, assignee_distribution, open_issues }
 ```
@@ -432,12 +432,13 @@ Output: { milestone, due_on, days_remaining, total_issues, open, closed, progres
 
 Auto-distributes unassigned sprint issues between team members.
 
-```
+```text
 Input:  { "milestone_title": "Sprint 2", "team_members": ["octocat", "hubot"], "strategy": "backend_frontend" }
 Output: { milestone, strategy, total_issues, already_assigned, unassigned, distribution: { "user": { already_assigned, newly_planned, total, new_issues } }, next_step }
 ```
 
 **Strategies**:
+
 - `balanced`: Equal number per person (load-aware)
 - `backend_frontend`: Backend labels → member[0], Frontend labels → member[1]
 - `round_robin`: Alternate assignment
@@ -446,7 +447,7 @@ Output: { milestone, strategy, total_issues, already_assigned, unassigned, distr
 
 Generates formatted markdown release notes from closed issues in a milestone.
 
-```
+```text
 Input:  { "milestone_title": "Sprint 1", "version": "v2.1.0", "include_contributors": true, "group_by_label": true }
 Output: { version, milestone, issues_count, contributors, categories_used, markdown }
 ```
@@ -455,7 +456,7 @@ Output: { version, milestone, issues_count, contributors, categories_used, markd
 
 Links a PR to an issue (adds closing reference + comment).
 
-```
+```text
 Input:  { "issue_number": 258, "pr_number": 45 }
 Output: { issue_number, pr_number, pr_url, message }
 ```
@@ -471,7 +472,7 @@ GraphQL. GitHub's native Reviewers and Milestone project fields reflect review
 requests and the repository milestone; they are not written as generic custom
 fields.
 
-```
+```text
 Input:  { "title": "Add reviewer metadata", "head": "feat/reviewer-metadata",
           "base": "main", "body": "Closes #42", "link_to_issue": 42,
           "reviewers": ["octocat"], "labels": ["feature", "documentation"],
@@ -507,7 +508,7 @@ the reviewer, labels, assignees, milestone, and Project V2 fields described for
 requested changes; unrelated values are left untouched. `state`, when given,
 must be `open` or `closed`.
 
-```
+```text
 Input:  { "pull_number": 42, "reviewers": ["octocat"],
           "labels": ["feature", "needs-review"], "status": "In Review",
           "priority": "High", "due_date": "2027-12-31" }
@@ -536,7 +537,7 @@ one call (including `issue_or_pr_number`, which filters the full board). Owner-t
 (org/user) is handled by the underlying `list_all_items`. Supports a dry-run
 preview and scoping to a single number.
 
-```
+```text
 Input:  {}                                   // scan the whole board, apply
         { "dry_run": true }                  // preview only, no mutations
         { "issue_or_pr_number": 658 }        // reconcile just one item
@@ -555,7 +556,7 @@ Output: { dry_run, done_status, scanned, skipped_open, errors,
 
 Completes an issue lifecycle: adds completion comment, closes it, project auto-moves to Done.
 
-```
+```text
 Input:  { "issue_number": 258, "summary": "Fixed navigation. Tested on all browsers." }
 Output: { issue_number, status: "completed", comment, message }
 ```
@@ -564,7 +565,7 @@ Output: { issue_number, status: "completed", comment, message }
 
 Generates a daily standup report: what was done recently, what's in progress, what's blocked.
 
-```
+```text
 Input:  { "username": "octocat" }  // or {} for all team
 Output: { date, done_recently: [{ number, title }], done_count, in_progress: [...], in_progress_count, blocked: [...], blocked_count }
 ```
@@ -573,7 +574,7 @@ Output: { date, done_recently: [{ number, title }], done_count, in_progress: [..
 
 Sprint retrospective data: velocity, completion %, per-person breakdown, pending items.
 
-```
+```text
 Input:  { "milestone_title": "Sprint 1" }
 Output: { milestone, total_issues, completed, pending, progress_pct, velocity, per_person: { "user": { completed, pending } }, pending_issues }
 ```
@@ -582,7 +583,7 @@ Output: { milestone, total_issues, completed, pending, progress_pct, velocity, p
 
 Finds untriaged issues (missing milestone, assignee, or labels).
 
-```
+```text
 Input:  {}
 Output: { untriaged_count, issues: [{ number, title, problems: ["no_milestone", "no_assignee"] }] }
 ```
@@ -591,7 +592,7 @@ Output: { untriaged_count, issues: [{ number, title, problems: ["no_milestone", 
 
 Finds issues past their due date that are still open.
 
-```
+```text
 Input:  {}
 Output: { overdue_count, issues: [{ number, title, milestone, days_overdue, assignees }] }
 ```
@@ -600,7 +601,7 @@ Output: { overdue_count, issues: [{ number, title, milestone, days_overdue, assi
 
 Reassigns an issue from one person to another with a context comment.
 
-```
+```text
 Input:  { "issue_number": 267, "from_user": "octocat", "to_user": "hubot", "context": "Backend done, needs frontend UI now." }
 Output: { issue_number, from, to, message }
 ```
@@ -618,6 +619,7 @@ Status option**; pass `status`/`priority` by option name (validated against the 
 own field options).
 
 Parameters:
+
 - `title` (str, required) — epic title.
 - `body` (str, required) — epic description.
 - `sub_tasks` (list[str], optional, max 20) — titles for NEW sub-issues to create.
@@ -626,7 +628,7 @@ Parameters:
 - `status` (str, optional) — Status option name; defaults to the board's first Status option.
 - `priority` (str, optional) — Priority option name (must match the board's Priority options).
 
-```
+```text
 Input:  { "title": "🏔️ [Epic] OCR System", "body": "Implement ticket scanning...", "sub_tasks": ["Backend OCR endpoint", "Frontend camera UI"], "link_existing": [42, 43], "milestone": "Sprint 4", "assignee": "octocat", "labels": ["📱 Mobile"], "priority": "High" }
 Output: { parent_issue, parent_url, sub_issues: [{ number, title, created }], sub_issues_count, linked_existing: [{ number, linked }], linked_existing_count, status_applied, message }
 ```
@@ -635,7 +637,7 @@ Output: { parent_issue, parent_url, sub_issues: [{ number, title, created }], su
 
 Closes a sprint: closes the milestone, moves pending issues to the next sprint, generates summary.
 
-```
+```text
 Input:  { "milestone_title": "Sprint 1", "next_milestone": "Sprint 2" }
 Output: { milestone, total, completed, pending_moved, moved_to, completion_pct, moved_issues, message }
 ```
@@ -644,7 +646,7 @@ Output: { milestone, total, completed, pending_moved, moved_to, completion_pct, 
 
 Reports issues that are blocked or pending, with dependency information.
 
-```
+```text
 Input:  {}
 Output: { blocked_count, issues: [{ number, title, assignees, milestone, dependency: 123 }] }
 ```
@@ -657,7 +659,7 @@ Change a single-select field's options — typically **Status**, which drives th
 board columns — and manage views. Always plan first: `set_field_options` is a
 dry run unless you pass `dry_run: false`.
 
-```
+```text
 # 1. Plan: show before → after, nothing changes
 Input:  { "options": [{"name": "📌 To Do"}, {"name": "🛠 In Progress"}, {"name": "👀 In Review", "color": "PURPLE"}, {"name": "✅ Done"}] }
 Output: { before, after, kept, added: ["👀 In Review"], removed: [], dry_run: true }
@@ -683,7 +685,7 @@ Input:  { "options": [...], "remove_missing": true, "dry_run": false, "confirm":
 `list_project_views` returns each view's number, name, layout and filter;
 `create_project_view` adds one:
 
-```
+```text
 Input:  { "name": "Bugs", "layout": "TABLE", "filter": "is:open label:bug" }
 Output: { id, number, name, layout: "TABLE", filter }
 ```
@@ -762,11 +764,34 @@ Two server-side switches govern the whole surface (set in the environment /
 Returns the effective access level, scope lock, tool-exposure counts, and the
 configured target. Credential-free. No arguments.
 
-```
+```text
 Input:  {}
 Output: { access_level, access_level_meaning, tool_exposure: { classified_total,
           exposed, hidden, hidden_delete_tools }, exposed_tools: [...],
           scope_lock: { enabled, variable, confined_to, meaning }, target }
+```
+
+### search_tools
+
+Searches the live registered catalog without returning large input schemas. Use
+it to select the right operation in large profiles; results contain only name,
+access tier, capabilities and a compact description.
+
+```text
+Input:  { "query": "label", "access_tier": "read", "limit": 20 }
+Output: { count, matched, total_registered, truncated, tools: [
+          { name, access_tier, capabilities, description }] }
+```
+
+### get_operational_metrics
+
+Returns process-local aggregate metrics: per-tool call/error counts, average,
+maximum and last latency, uptime, and HTTP/GitHub rate-limit counters. The data
+is metadata-only and resets on restart.
+
+```text
+Input:  { "tool": "list_project_items", "limit": 50 }
+Output: { uptime_seconds, totals, rate_limits, tools, truncated }
 ```
 
 ### Permanent-delete tools (access level `full`, each requires `confirm: true`)
@@ -774,7 +799,7 @@ Output: { access_level, access_level_meaning, tool_exposure: { classified_total,
 Each tool is **irreversible** and refuses without `confirm: true`, pointing you
 at the reversible alternative. They are not even registered below `full`.
 
-```
+```text
 delete_project_item   Input: { "item_id": "PVTI_...", "confirm": true }
                       Output: { item_id, deleted_item_id, deleted: true }
                       Reversible instead: archive_project_item / move_to_trash
@@ -815,6 +840,7 @@ All tools return either a success or error response:
 **Error**: `{ "ok": false, "error_type": "validation|not_found|internal", "message": "...", "suggestion": "..." }`
 
 Error types:
+
 - `validation`: Invalid input (wrong status value, missing required field)
 - `not_found`: Issue/milestone/item doesn't exist
 - `internal`: GitHub API error, network issue, or unexpected failure
@@ -824,11 +850,13 @@ Error types:
 ## Authentication
 
 The server resolves a GitHub token in this order:
+
 1. `GITHUB_TOKEN` environment variable
 2. `GH_TOKEN` environment variable
 3. `gh auth token` (GitHub CLI authenticated session)
 
 **Required permissions** (Fine-grained PAT):
+
 - Repository: Read & Write (issues, pull requests)
 - Organization: Read & Write (projects, members)
 
@@ -838,7 +866,7 @@ The server resolves a GitHub token in this order:
 
 ## Architecture
 
-```
+```text
 MCP client → docker run --rm -i --env-file .env mcp-github-projects:latest → python server.py → stdio MCP protocol
 ```
 
@@ -850,7 +878,7 @@ layering (tools → services → clients) and the ServiceFactory.
 
 ### File Structure
 
-```
+```text
 mcp-github-projects/
 ├── server.py                    ← Entry point (registers every tool)
 ├── __main__.py                  ← `python .` shim (clean fail-fast on bad config)
@@ -946,7 +974,7 @@ For backward compatibility a legacy `{"params": {...}}` wrapper is accepted on
 every tool and unwrapped; if both are sent, the flat value wins. A malformed
 call returns an error naming the missing/invalid field and the expected shape:
 
-```
+```text
 Invalid arguments for get_issue_detail: issue_number: Field required.
 Pass arguments flat, e.g. {"issue_number": …}; a legacy {"params": {...}} wrapper is also accepted.
 ```

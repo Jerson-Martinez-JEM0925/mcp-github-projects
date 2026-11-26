@@ -210,6 +210,14 @@ class GitHubProjectSettings(BaseSettings):
             "token fingerprint."
         ),
     )
+    http_require_tls: bool = Field(
+        default=False,
+        validation_alias="MCP_HTTP_REQUIRE_TLS",
+        description=(
+            "Require HTTPS or X-Forwarded-Proto=https for non-loopback Streamable "
+            "HTTP requests. Enable behind a TLS-terminating reverse proxy."
+        ),
+    )
     http_auth_cache_ttl_seconds: int = Field(
         default=60,
         validation_alias="MCP_HTTP_AUTH_CACHE_TTL_SECONDS",
@@ -351,6 +359,20 @@ class GitHubProjectSettings(BaseSettings):
     timeout_seconds: int = Field(default=30, ge=1, le=120)
     retry_delay_seconds: float = Field(default=2.0, ge=0, le=60)
     retry_attempts: int = Field(default=2, ge=0, le=5)
+    circuit_breaker_failures: int = Field(
+        default=5,
+        validation_alias="GH_PROJECT_CIRCUIT_BREAKER_FAILURES",
+        ge=1,
+        le=50,
+        description="Consecutive transient GitHub API failures before the circuit opens.",
+    )
+    circuit_breaker_reset_seconds: float = Field(
+        default=30.0,
+        validation_alias="GH_PROJECT_CIRCUIT_BREAKER_RESET_SECONDS",
+        ge=1.0,
+        le=600.0,
+        description="Seconds before an open GitHub API circuit admits a half-open probe.",
+    )
     max_concurrent_requests: int = Field(
         default=5,
         ge=1,

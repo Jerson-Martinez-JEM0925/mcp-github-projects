@@ -30,6 +30,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
+from core.metrics import record_tool_invocation
 from core.observability import tool_span
 
 _CURRENT: ContextVar[RequestContext | None] = ContextVar("mcp_request_context", default=None)
@@ -64,6 +65,13 @@ def request_scope(tool: str) -> Iterator[RequestContext]:
         _CURRENT.reset(token)
 
 
+def _invocation_ok(result: Any) -> bool:
+    """Interpret MCP envelopes without treating validation details as secrets."""
+    if isinstance(result, dict) and result.get("ok") is False:
+        return False
+    return True
+
+
 def with_request_context(
     fn: Callable[..., Any], tool: str | None = None, access_tier: str = "unknown"
 ) -> Callable[..., Any]:
@@ -83,7 +91,13 @@ def with_request_context(
             with request_scope(name) as ctx:
                 with tool_span(name, correlation_id=ctx.correlation_id, access_tier=access_tier):
                     try:
-                        return await fn(*args, **kwargs)
+                        result = await fn(*args, **kwargs)
+                    except Exception:
+                        record_tool_invocation(name, ctx.elapsed_ms(), ok=False)
+                        raise
+                    else:
+                        record_tool_invocation(name, ctx.elapsed_ms(), ok=_invocation_ok(result))
+                        return result
                     finally:
                         logger.debug("tool=%s finished in %dms", name, ctx.elapsed_ms())
 
@@ -94,7 +108,13 @@ def with_request_context(
         with request_scope(name) as ctx:
             with tool_span(name, correlation_id=ctx.correlation_id, access_tier=access_tier):
                 try:
-                    return fn(*args, **kwargs)
+                    result = fn(*args, **kwargs)
+                except Exception:
+                    record_tool_invocation(name, ctx.elapsed_ms(), ok=False)
+                    raise
+                else:
+                    record_tool_invocation(name, ctx.elapsed_ms(), ok=_invocation_ok(result))
+                    return result
                 finally:
                     logger.debug("tool=%s finished in %dms", name, ctx.elapsed_ms())
 

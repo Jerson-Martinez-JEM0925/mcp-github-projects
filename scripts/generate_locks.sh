@@ -3,7 +3,7 @@
 # Intended to run inside the pinned Python Docker image through `make lock`.
 set -euo pipefail
 
-printf '%s\n' 'pip==26.2.2 --hash=sha256:fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70 --hash=sha256:3a8e5c800492787f33a4114ef54444546c340df428974ebba17e0fd47e11af2f' > /tmp/mcp-pip-bootstrap.lock
+printf '%s\n' 'pip==26.3 --hash=sha256:f3b60b20ffaadd4415ed7957212a38ac63fa4c5fa375bd0f4a797777940fad13 --hash=sha256:6c36ae7da8695be67e3cd9f7d87919667ced53f57ce2ede75d89b5912ed2bc4c' > /tmp/mcp-pip-bootstrap.lock
 
 python3 -m venv /tmp/mcp-lock-runtime-venv
 /tmp/mcp-lock-runtime-venv/bin/pip install --quiet --require-hashes -r /tmp/mcp-pip-bootstrap.lock

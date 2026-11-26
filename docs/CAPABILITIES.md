@@ -138,16 +138,19 @@ This is the parity concept with `mcp-monday-projects`' `MONDAY_WORKSPACE_ID`.
 ## Example Profiles
 
 ### Read-Only Analyst
+
 - Classic: `repo` (read), `read:project`
 - Fine-Grained: Issues(Read), Pull requests(Read), Org Projects(Read)
 - Capabilities: `issues.read`, `comments.read`, `projects.read`, `planning.read`, `labels.read`, `pull_requests.read`
 
 ### Project Manager (full)
+
 - Classic: `repo`, `project`, `read:org`
 - Fine-Grained: Issues(Read+Write), Pull requests(Read+Write), Org Projects(Read+Write)
 - Capabilities: All
 
 ### Issue Commenter
+
 - Classic: `repo`
 - Fine-Grained: Issues(Read+Write)
 - Capabilities: `issues.read`, `comments.read`, `comments.write`
@@ -193,7 +196,6 @@ public API beyond `deleteProjectV2Workflow`, so they are not exposed.
 2. The `discover_ids` tool is required on first use to resolve project/field IDs; it caches results.
 3. Bulk operations (`bulk_close_issues`, `bulk_update_items`, `bulk_assign`) combine multiple write calls — enforce the same permissions as single-item equivalents.
 4. Workflow tools (`complete_issue`, `create_epic`, etc.) aggregate multiple operations and require the union of all sub-operation capabilities.
-
 
 ## Repository Provisioning
 

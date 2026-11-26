@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 
 import httpx
 
+from core.circuit_breaker import CircuitOpenError, github_circuit_breaker
 from core.config import get_settings
 from core.exceptions import (
     AuthenticationError,
@@ -26,6 +27,7 @@ from core.exceptions import (
     TimeoutError,
 )
 from core.hardening import bounded_text
+from core.metrics import record_rate_limit
 from models.context import GitHubContext
 
 logger = logging.getLogger(__name__)
@@ -125,6 +127,12 @@ class GraphQLClient:
             "Accept": "application/json",
         }
 
+        breaker = github_circuit_breaker(token)
+        try:
+            breaker.before_call()
+        except CircuitOpenError as exc:
+            raise GraphQLError(str(exc), retryable=False, retry_after=exc.retry_after) from exc
+
         try:
             client = _shared_http_client(token, self._timeout)
             response = await client.post(
@@ -133,10 +141,12 @@ class GraphQLClient:
                 headers=headers,
             )
         except httpx.TimeoutException as exc:
+            breaker.record_failure()
             raise TimeoutError(
                 f"Request timed out after {self._timeout}s"
             ) from exc
         except httpx.RequestError as exc:
+            breaker.record_failure()
             raise GraphQLError(
                 f"GitHub API request failed: {bounded_text(exc)}"
             ) from exc
@@ -145,6 +155,9 @@ class GraphQLClient:
 
         # GitHub can return transient gateway failures without GraphQL errors.
         if response.status_code in {408, 425, 429} or response.status_code >= 500:
+            breaker.record_failure()
+            if response.status_code == 429:
+                record_rate_limit("github_api")
             retry_after_header = response.headers.get("Retry-After")
             retry_after: float | None = None
             if retry_after_header:
@@ -162,6 +175,8 @@ class GraphQLClient:
                 retry_after=retry_after,
             )
 
+        breaker.record_success()
+
         # Handle authentication errors
         if response.status_code == 401:
             raise AuthenticationError(
@@ -172,6 +187,11 @@ class GraphQLClient:
 
         # Handle rate-limit errors
         if response.status_code == 403:
+            if (
+                response.headers.get("X-RateLimit-Remaining") == "0"
+                or response.headers.get("Retry-After")
+            ):
+                record_rate_limit("github_api")
             remaining = response.headers.get("X-RateLimit-Remaining")
             try:
                 remaining_count = int(remaining) if remaining is not None else None
