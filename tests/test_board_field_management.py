@@ -362,6 +362,69 @@ async def test_resolve_item_id_on_user_board() -> None:
     assert await svc.resolve_item_id(md, 999) is None
 
 
+def _user_board_page(number: int, item_id: str, has_next: bool, cursor: str | None) -> dict:
+    return {
+        "data": {
+            "user": {
+                "projectV2": {
+                    "items": {
+                        "pageInfo": {"hasNextPage": has_next, "endCursor": cursor},
+                        "nodes": [
+                            {
+                                "id": item_id,
+                                "content": {
+                                    "__typename": "Issue",
+                                    "number": number,
+                                    "title": "t",
+                                    "body": "",
+                                    "url": f"https://github.com/octocat/demo/issues/{number}",
+                                    "assignees": {"nodes": []},
+                                    "labels": {"nodes": []},
+                                },
+                                "fieldValues": {"nodes": []},
+                            }
+                        ],
+                    }
+                }
+            }
+        }
+    }
+
+
+class _PagedGraphQL:
+    """Serves one page per call, following the ``after`` cursor."""
+
+    def __init__(self, pages: dict[str | None, dict]) -> None:
+        self.pages = pages
+        self.calls = 0
+
+    async def execute_with_retry(self, query, variables, is_mutation=False):
+        self.calls += 1
+        return self.pages[variables.get("after")]
+
+
+@pytest.mark.anyio
+async def test_resolve_item_id_finds_items_beyond_max_items(monkeypatch) -> None:
+    """A card past GH_PROJECT_MAX_ITEMS (e.g. just added) must still resolve."""
+    from services import project_service as project_service_module
+
+    settings = GitHubProjectSettings()
+    monkeypatch.setattr(settings, "max_items", 1)
+    monkeypatch.setattr(settings, "page_size", 1)
+    monkeypatch.setattr(project_service_module, "get_settings", lambda: settings)
+
+    graphql = _PagedGraphQL(
+        {
+            None: _user_board_page(1, "ITEM_FIRST", True, "c1"),
+            "c1": _user_board_page(42, "ITEM_NEW", False, None),
+        }
+    )
+    svc = ProjectService(graphql_client=graphql, gh_client=object(), context=_user_context())
+
+    assert await svc.resolve_item_id(_metadata(), 42) == "ITEM_NEW"
+    assert graphql.calls == 2
+
+
 # ── #18: add_item_by_content_id ──────────────────────────────────────────────
 
 

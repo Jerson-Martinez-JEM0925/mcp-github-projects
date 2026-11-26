@@ -230,8 +230,9 @@ class ProjectService:
     ) -> str | None:
         """Resolve a project item node ID from an issue / PR number.
 
-        Scans the board (owner-type aware — works on both user- and
-        organization-owned projects, see issue #17) and returns the node
+        Scans the whole board (owner-type aware — works on both user- and
+        organization-owned projects, see issue #17), ignoring
+        ``GH_PROJECT_MAX_ITEMS``, and returns the node
         ID of the item whose underlying Issue/PR number matches.
 
         Args:
@@ -249,9 +250,13 @@ class ProjectService:
             The project item node ID, or None if the number is not on the
             board (or is ambiguous across repositories).
         """
+        # Exhaustive on purpose: a recently added card sits after the first
+        # GH_PROJECT_MAX_ITEMS items on a large board, and a capped scan would
+        # report it as "not on the board" right after add_item_to_project.
         items = await self._fetch_all_items(
             metadata,
             get_settings().max_items,
+            exhaustive=True,
             include_body=False,
         )
         matches = [item for item in items if item.issue_number == issue_or_pr_number]
