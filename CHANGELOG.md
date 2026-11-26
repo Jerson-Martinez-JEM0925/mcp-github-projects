@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-26
+
+### 🚀 Features
+
+- **Automate merge-to-main release pipelines** by @jersonmartinez in [#167](https://github.com/jersonmartinez/mcp-github-projects/pull/167).
+
 ### Added
 
 - **Multiple Project V2 boards per organization**: `GH_PROJECT_PROJECT_NUMBERS`
@@ -28,6 +34,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`get_pull_request_merge_readiness` review decision**: a later `COMMENTED`
   or `PENDING` review no longer overrides a reviewer's approval, and a
   `DISMISSED` review withdraws that reviewer's decision.
+
+### 📦 Release data
+
+- **Version:** `v1.6.0` (`minor` bump from `v1.5.1` — new user-facing capability).
+- **Compatibility:** ✅ backwards-compatible feature release.
+- **Source:** pull request [#167](https://github.com/jersonmartinez/mcp-github-projects/pull/167); merge commit `7105404053c1`.
+- **Scope:** includes curated changes that were accumulated under `[Unreleased]` before automation.
+- **Compare:** [`v1.5.1...v1.6.0`](https://github.com/jersonmartinez/mcp-github-projects/compare/v1.5.1...v1.6.0).
+- **Container image:** `ghcr.io/jersonmartinez/mcp-github-projects:1.6.0` (also `ghcr.io/jersonmartinez/mcp-github-projects:1.6` and `ghcr.io/jersonmartinez/mcp-github-projects:latest`).
+- **Upgrade:** `docker pull ghcr.io/jersonmartinez/mcp-github-projects:1.6.0`.
 
 ## [1.5.1] - 2026-11-20
 
