@@ -19,6 +19,7 @@ from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
 from services.project_service import ProjectService
 from core.factory import get_service_factory
+from core.project_scope import project_context
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +84,12 @@ class CreateEpicInput(BaseModel):
     priority: Optional[str] = Field(
         default=None,
         description="Project board Priority option name (must match the board's Priority field options)",
+    )
+    project_number: int | None = Field(
+        default=None,
+        gt=0,
+        le=100_000,
+        description="Project V2 board number; defaults to the configured board.",
     )
 
 
@@ -448,11 +455,19 @@ async def create_epic(params: CreateEpicInput) -> dict:
     try:
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
-        gh = get_service_factory().gh()
+        context = project_context(params.project_number)
+        gh = get_service_factory().gh(context=context)
 
         graphql_client = await get_service_factory().graphql()
-        discovery_service = await get_service_factory().discovery_service(graphql_client)
-        project_service = await get_service_factory().project_service(graphql_client, gh)
+        discovery_service = await get_service_factory().discovery_service(
+            graphql_client,
+            context=context,
+        )
+        project_service = await get_service_factory().project_service(
+            graphql_client,
+            gh,
+            context=context,
+        )
 
         # Resolve the board metadata (project id, field ids, option ids) once.
         try:

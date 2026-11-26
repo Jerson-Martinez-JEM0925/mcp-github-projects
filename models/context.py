@@ -114,6 +114,7 @@ class GitHubContext:
         settings: Any | None = None,
         token_provider: TokenProvider | None = None,
         capabilities: Iterable[str] = (),
+        project_number: int | None = None,
     ) -> "GitHubContext":
         """Adapt legacy settings into an explicit context.
 
@@ -142,7 +143,9 @@ class GitHubContext:
         target = ProjectTarget(
             owner_type=owner_type,
             owner_login=owner_login,
-            project_number=settings.project_number,
+            project_number=(
+                settings.project_number if project_number is None else int(project_number)
+            ),
             repository=settings.repo_name,
         )
         return cls(

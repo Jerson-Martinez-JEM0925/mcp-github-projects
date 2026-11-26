@@ -1,18 +1,20 @@
 # Multiple repositories and project scopes
 
-There are two supported ways to span repositories:
+There are three supported ways to span repositories and project boards:
 
-1. **Multiple locked instances (recommended for single-user clients):** one
-   named MCP server instance per repository/project target, each with its own
-   `GH_PROJECT_*` tuple and `GH_PROJECT_SCOPE_LOCK=true`. Clients register
-   several named servers at once; choose the server whose `server_info` target
-   matches the intended repository before making changes.
-2. **One organization-wide instance (for multi-user hosts such as
-   LibreChat):** a single server with `GH_PROJECT_SCOPE_LOCK=false` combined
-   with request-scoped bearer auth (`MCP_TRANSPORT=streamable-http` +
-   `MCP_AUTH_MODE=request`). Repository-scoped tools then accept `owner`/`repo`
-   overrides and every call runs under the *caller's* GitHub token — see
-   [Organization-wide mode](#organization-wide-mode) below.
+1. **One multi-project instance for the same organization:** keep one default
+   `GH_PROJECT_PROJECT_NUMBER`, add `GH_PROJECT_PROJECT_NUMBERS`, and pass the
+   optional `project_number` selector to board tools. This is appropriate when
+   one credential is intentionally authorized for all listed boards.
+2. **Multiple locked instances:** one named MCP server instance per
+   repository/project target, each with its own `GH_PROJECT_*` tuple and
+   `GH_PROJECT_SCOPE_LOCK=true`. This is recommended when credentials or write
+   boundaries differ.
+3. **One organization-wide instance for repositories:** a single server with
+   `GH_PROJECT_SCOPE_LOCK=false` combined with request-scoped bearer auth
+   (`MCP_TRANSPORT=streamable-http` + `MCP_AUTH_MODE=request`). Repository-scoped
+   tools accept owner/repo overrides; project-board tools still require the
+   configured project allowlist and an explicit `project_number` when needed.
 
 Do not turn off the scope lock to make one instance span repositories **when
 the server authenticates with a single shared token**. The lock is an
@@ -35,10 +37,11 @@ What stays scoped even when unlocked:
 
 - **Project-board tools** (`list_project_items`, `update_project_item_fields`,
   `create_project_item`, sprint/planning/bulk tools, field and view tools)
-  still operate on the configured `GH_PROJECT_PROJECT_NUMBER` board. Projects
-  V2 metadata has no per-call repository target.
-- **`enforce_scope` still runs** — it is simply a no-op with the lock off, so
-  flipping the variable back to `true` instantly restores the fence.
+  use the configured default board when `project_number` is omitted and accept
+  an explicit board from `GH_PROJECT_PROJECT_NUMBERS` when it is provided.
+  Projects V2 metadata, field IDs, and item IDs remain board-specific.
+- **`enforce_scope` still runs** — it is simply a no-op for repository overrides
+  with the lock off; the project allowlist remains enforced by board selectors.
 
 Typical deployment (LibreChat-style, one server per organization):
 

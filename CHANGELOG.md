@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Multiple Project V2 boards per organization**: `GH_PROJECT_PROJECT_NUMBERS`
+  defines an allowlist of boards, while project-board tools accept an optional
+  `project_number` selector. The legacy `GH_PROJECT_PROJECT_NUMBER` remains the
+  default. Metadata caches and diagnostics are isolated per selected board, and
+  the stable MCP tool-schema digest is rebaselined for the additive parameters.
+
 ### Fixed
 
 - **`compare_branches` and `create_promotion_pull_request` list the pull

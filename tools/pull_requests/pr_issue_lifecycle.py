@@ -21,6 +21,7 @@ from core.access import resolve_repository
 from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
 from core.factory import get_service_factory
+from core.project_scope import project_context
 from services.project_service import bare_option_name
 
 logger = logging.getLogger(__name__)
@@ -76,6 +77,7 @@ class CloseIssueOnPRMergeInput(_RepoTarget):
     """Input schema for the close_issue_on_pr_merge tool."""
 
     pr_number: int = Field(description="GitHub pull request number that was merged")
+    project_number: int | None = Field(default=None, gt=0, le=100_000)
 
 
 # ── Helper Functions ─────────────────────────────────────────────────────────
@@ -630,6 +632,7 @@ class SyncClosedItemsToDoneInput(BaseModel):
         description="Status columns treated as terminal (never moved). The destination "
         "done_status is ALWAYS treated as terminal too, even if omitted here.",
     )
+    project_number: int | None = Field(default=None, gt=0, le=100_000)
 
 
 async def sync_closed_items_to_done(params: SyncClosedItemsToDoneInput) -> dict:
@@ -662,10 +665,18 @@ async def sync_closed_items_to_done(params: SyncClosedItemsToDoneInput) -> dict:
     _CLOSED_STATES = {"CLOSED", "MERGED"}
 
     try:
+        context = project_context(params.project_number)
         graphql_client = await get_service_factory().graphql()
-        gh_client = get_service_factory().gh()
-        discovery = await get_service_factory().discovery_service(graphql_client)
-        project_service = await get_service_factory().project_service(graphql_client, gh_client)
+        gh_client = get_service_factory().gh(context=context)
+        discovery = await get_service_factory().discovery_service(
+            graphql_client,
+            context=context,
+        )
+        project_service = await get_service_factory().project_service(
+            graphql_client,
+            gh_client,
+            context=context,
+        )
         metadata = await discovery.get_cached_or_discover()
 
         items = await project_service.list_all_items(metadata=metadata)

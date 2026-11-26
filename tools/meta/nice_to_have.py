@@ -22,6 +22,7 @@ from core.config import get_settings
 from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
 from core.factory import get_service_factory
+from core.project_scope import project_context
 from services.field_defaults import compute_defaults
 
 logger = logging.getLogger(__name__)
@@ -145,6 +146,7 @@ class PullRequestMetadataInput(BaseModel):
         default=False,
         description="Fill omitted Project V2 fields using configured defaults.",
     )
+    project_number: int | None = Field(default=None, gt=0, le=100_000)
 
 
 class CreatePullRequestInput(PullRequestMetadataInput):
@@ -630,10 +632,16 @@ async def _apply_pull_request_metadata(
     if params.apply_defaults or board_fields:
         try:
             settings = get_settings()
+            context = project_context(params.project_number)
             graphql_client = await get_service_factory().graphql()
-            discovery = await get_service_factory().discovery_service(graphql_client)
+            discovery = await get_service_factory().discovery_service(
+                graphql_client,
+                context=context,
+            )
             project_service = await get_service_factory().project_service(
-                graphql_client, gh_client
+                graphql_client,
+                get_service_factory().gh(context=context),
+                context=context,
             )
             metadata = await discovery.get_cached_or_discover()
             item_id = await project_service.resolve_item_id(metadata, pull_number)
@@ -761,14 +769,23 @@ async def create_pull_request(params: CreatePullRequestInput) -> dict:
             )
 
             add_result = await add_item_to_project(
-                AddItemToProjectInput(issue_or_pr_number=pr_number)
+                AddItemToProjectInput(
+                    issue_or_pr_number=pr_number,
+                    project_number=params.project_number,
+                )
             )
             if add_result.get("ok"):
                 try:
+                    context = project_context(params.project_number)
                     graphql_client = await get_service_factory().graphql()
-                    discovery = await get_service_factory().discovery_service(graphql_client)
+                    discovery = await get_service_factory().discovery_service(
+                        graphql_client,
+                        context=context,
+                    )
                     project_service = await get_service_factory().project_service(
-                        graphql_client, gh_client
+                        graphql_client,
+                        get_service_factory().gh(context=context),
+                        context=context,
                     )
                     metadata = await discovery.get_cached_or_discover()
                     verified_item_id = await project_service.resolve_item_id(

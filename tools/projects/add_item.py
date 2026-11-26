@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, model_validator
 from core.error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
 from core.factory import get_service_factory
+from core.project_scope import project_context
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,12 @@ class AddItemToProjectInput(BaseModel):
         default=None,
         gt=0,
         description="Compatibility alias for issue_or_pr_number",
+    )
+    project_number: int | None = Field(
+        default=None,
+        gt=0,
+        le=100_000,
+        description="Project V2 board number; defaults to the configured board.",
     )
 
     @model_validator(mode="after")
@@ -65,11 +72,19 @@ async def add_item_to_project(params: AddItemToProjectInput) -> dict:
                 message="Provide issue_or_pr_number or issue_number.",
                 suggestion="Pass the issue or pull-request number to add.",
             )
+        context = project_context(params.project_number)
         graphql_client = await get_service_factory().graphql()
-        gh_client = get_service_factory().gh()
+        gh_client = get_service_factory().gh(context=context)
 
-        discovery_service = await get_service_factory().discovery_service(graphql_client)
-        project_service = await get_service_factory().project_service(graphql_client, gh_client)
+        discovery_service = await get_service_factory().discovery_service(
+            graphql_client,
+            context=context,
+        )
+        project_service = await get_service_factory().project_service(
+            graphql_client,
+            gh_client,
+            context=context,
+        )
 
         metadata = await discovery_service.get_cached_or_discover()
 

@@ -4,7 +4,24 @@ Complete parameter documentation for each tool in the GitHub Project Management 
 
 ---
 
-## discover_ids
+## Project-board target selection
+
+Project-board tools accept the optional `project_number` selector. When it is
+omitted, the configured `GH_PROJECT_PROJECT_NUMBER` is used. An explicit
+selector must be included in `GH_PROJECT_PROJECT_NUMBERS` when that allowlist
+is configured.
+
+| Variable | Type | Required | Description |
+|----------|------|----------|-------------|
+| `GH_PROJECT_PROJECT_NUMBER` | `int` | Yes | Default Project V2 board. |
+| `GH_PROJECT_PROJECT_NUMBERS` | `csv[int]` | No | Additional Project V2 boards allowed by board tools. |
+| `project_number` | `int` | No | Per-call board selector; never changes the default. |
+
+See [Multiple Project V2 boards](MULTI_PROJECTS.md) for cache isolation,
+scope-lock behavior, Docker configuration, and migration guidance.
+
+---
+
 
 Discovers project ID, field IDs, and option IDs from the GitHub Project V2 API.
 

@@ -167,13 +167,16 @@ echo 'GITHUB_TOKEN=ghp_new_token_here' > .env
 
 ## Target Configuration
 
-The MCP requires three mandatory fields identifying the GitHub Project:
+The MCP requires four target fields for the default board. The first three
+identify the GitHub Project V2 destination and the fourth selects the owner
+query variant:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `GH_PROJECT_ORG_NAME` | GitHub owner (org or user login) | `my-org` |
 | `GH_PROJECT_REPO_NAME` | Repository name | `my-repo` |
-| `GH_PROJECT_PROJECT_NUMBER` | Project V2 board number | `1` |
+| `GH_PROJECT_PROJECT_NUMBER` | Default Project V2 board number | `1` |
+| `GH_PROJECT_PROJECT_NUMBERS` | Optional comma-separated additional boards | `1,2` |
 | `GH_PROJECT_OWNER_TYPE` | `auto` (default), `organization`, or `user` | `auto` |
 
 > **Owner-type auto-detection.** `GH_PROJECT_OWNER_TYPE` defaults to `auto`:
@@ -193,6 +196,14 @@ The MCP requires three mandatory fields identifying the GitHub Project:
 > `Configuration error: …` line on stderr, after the explanatory help block,
 > and the process exits with code **2** — never a Python traceback. Code **1**
 > means authentication/scope validation failed; **0** is a normal shutdown.
+
+For one MCP instance serving multiple boards owned by the same organization,
+set `GH_PROJECT_PROJECT_NUMBERS` to a comma-separated allowlist. Existing
+single-board clients continue to use `GH_PROJECT_PROJECT_NUMBER` unchanged.
+Project-board tools accept an optional `project_number` argument and reject a
+number outside the allowlist before making an API call. Read
+[Multiple Project V2 boards](MULTI_PROJECTS.md) before enabling writes across
+boards.
 
 #### Board field defaults
 

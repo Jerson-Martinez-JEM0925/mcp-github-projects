@@ -16,8 +16,9 @@ Safety model for options (the Status field drives the board's columns):
   ``remove_missing: true`` — and removing requires ``confirm: true``, because
   items holding a removed option lose that value.
 
-All tools act on the configured project (``GH_PROJECT_*``); there is no
-project override, so ``GH_PROJECT_SCOPE_LOCK`` needs no extra check.
+All tools use the configured default project when ``project_number`` is
+omitted. Callers may select an allowed board explicitly with
+``GH_PROJECT_PROJECT_NUMBERS``; ``GH_PROJECT_SCOPE_LOCK`` still applies.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ from pydantic import BaseModel, Field
 
 from core.error_handling import build_error_response, handle_tool_error
 from core.factory import get_service_factory
+from core.project_scope import project_context
 from graphql.mutations import (
     CREATE_PROJECT_VIEW_MUTATION,
     UPDATE_PROJECT_VIEW_FILTER_MUTATION,
@@ -63,21 +65,48 @@ class SetFieldOptionsInput(BaseModel):
     )
     dry_run: bool = Field(default=True, description="Return the plan without changing anything (default true).")
     confirm: bool = Field(default=False, description="Required with remove_missing=true when dry_run=false.")
+    project_number: int | None = Field(
+        default=None,
+        gt=0,
+        le=100_000,
+        description="Project V2 board number; defaults to the configured board.",
+    )
 
 
 class ListProjectViewsInput(BaseModel):
-    pass
+    project_number: int | None = Field(
+        default=None,
+        gt=0,
+        le=100_000,
+        description="Project V2 board number; defaults to the configured board.",
+    )
 
 
 class CreateProjectViewInput(BaseModel):
+    project_number: int | None = Field(
+        default=None,
+        gt=0,
+        le=100_000,
+        description="Project V2 board number; defaults to the configured board.",
+    )
     name: str = Field(..., min_length=1, max_length=100, description="View name, e.g. 'Sprint board'.")
     layout: Literal["BOARD", "TABLE", "ROADMAP"] = Field(default="BOARD", description="View layout.")
     filter: Optional[str] = Field(default=None, max_length=1_000, description="Optional view filter, e.g. 'is:open label:bug'.")
 
 
-async def _metadata():
-    graphql_client = await get_service_factory().graphql()
-    discovery = await get_service_factory().discovery_service(graphql_client)
+async def _metadata(project_number: int | None = None):
+    context = project_context(project_number)
+    factory = get_service_factory()
+    graphql_client = await factory.graphql()
+    try:
+        discovery = await factory.discovery_service(
+            graphql_client,
+            context=context,
+        )
+    except TypeError as exc:
+        if "context" not in str(exc):
+            raise
+        discovery = await factory.discovery_service(graphql_client)
     return graphql_client, discovery, await discovery.get_cached_or_discover()
 
 
@@ -126,7 +155,7 @@ def _plan(current: list[dict], params: SetFieldOptionsInput) -> tuple[list[dict]
 async def set_field_options(params: SetFieldOptionsInput) -> dict:
     """Plan or apply a single-select field's options (e.g. the Status columns), preserving item values."""
     try:
-        graphql_client, discovery, metadata = await _metadata()
+        graphql_client, discovery, metadata = await _metadata(params.project_number)
         field = metadata.fields.get(params.field_name)
         if field is None or field.data_type != "SINGLE_SELECT":
             return build_error_response(
@@ -189,7 +218,8 @@ async def set_field_options(params: SetFieldOptionsInput) -> dict:
 async def list_project_views(params: ListProjectViewsInput | None = None) -> dict:
     """List the project's views (number, name, layout, filter)."""
     try:
-        graphql_client, _, metadata = await _metadata()
+        params = params or ListProjectViewsInput()
+        graphql_client, _, metadata = await _metadata(params.project_number)
         response = await graphql_client.execute_with_retry(PROJECT_VIEWS_QUERY, {"projectId": metadata.project_id})
         node = (response.get("data") or {}).get("node") or {}
         views = (node.get("views") or {}).get("nodes") or []
@@ -210,7 +240,7 @@ async def list_project_views(params: ListProjectViewsInput | None = None) -> dic
 async def create_project_view(params: CreateProjectViewInput) -> dict:
     """Create a board, table or roadmap view on the project, optionally with a filter."""
     try:
-        graphql_client, _, metadata = await _metadata()
+        graphql_client, _, metadata = await _metadata(params.project_number)
         result = await graphql_client.execute_with_retry(
             CREATE_PROJECT_VIEW_MUTATION,
             {"projectId": metadata.project_id, "name": params.name, "layout": _LAYOUTS[params.layout]},

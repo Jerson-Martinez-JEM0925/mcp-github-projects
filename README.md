@@ -25,7 +25,10 @@ repository/project quality reports, and higher-level planning capabilities.
   strategic planning.
 - **GitHub Projects V2 native** — GraphQL v4 for field/board mutations, REST/`gh`
   for issue CRUD, with automatic delegation to the right API per operation.
-- **Organization *and* user projects** via a single `GH_PROJECT_OWNER_TYPE` switch.
+- **Organization and user projects** via a single `GH_PROJECT_OWNER_TYPE` switch.
+- **Multiple Project V2 boards per organization** — keep one default board and
+  allow additional boards through `GH_PROJECT_PROJECT_NUMBERS`; board tools
+  accept an explicit `project_number` selector with isolated metadata caches.
 - **Access levels** — `MCP_ACCESS_LEVEL=read|write|full` decides which tools are
   even registered: `read` exposes read-only tools, `write` (default) adds
   create/update/close/archive, `full` also exposes permanent-delete tools (each
@@ -43,8 +46,9 @@ repository/project quality reports, and higher-level planning capabilities.
   cache, target-namespaced isolation, and token redaction in all diagnostics.
 - **Response-quality diagnostics** — bounded repository health, issue/PR lifecycle, CI conclusions, metadata consistency, closure readiness, pagination, and safe target diagnostics for automation workers.
 - **Multiple scoped instances** — connect to several repositories/projects at
-  once with distinct MCP server names and a scope lock per target. See
-  [docs/MULTI_SCOPE_CONFIGURATION.md](docs/MULTI_SCOPE_CONFIGURATION.md).
+  once with distinct MCP server names and a scope lock per target. For several
+  boards in the same organization from one instance, see
+  [docs/MULTI_PROJECTS.md](docs/MULTI_PROJECTS.md).
 
 ---
 
@@ -78,7 +82,8 @@ GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 # Target board
 GH_PROJECT_ORG_NAME=my-org          # organization login or username
 GH_PROJECT_REPO_NAME=my-repo        # repository within the owner
-GH_PROJECT_PROJECT_NUMBER=1         # Project V2 number (from the board URL)
+GH_PROJECT_PROJECT_NUMBER=1         # default Project V2 number
+GH_PROJECT_PROJECT_NUMBERS=1,2      # optional additional boards
 GH_PROJECT_OWNER_TYPE=organization  # 'organization' or 'user'
 ```
 

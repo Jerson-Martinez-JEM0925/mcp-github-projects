@@ -33,6 +33,7 @@ from models.responses import ToolSuccess, ToolError
 from services.field_defaults import compute_defaults
 from services.field_names import resolve_field
 from core.factory import get_service_factory
+from core.project_scope import project_context
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,12 @@ class CreateProjectItemInput(BaseModel):
         default=None,
         description="Repository name. Defaults to GH_PROJECT_REPO_NAME (scope-lock checked).",
     )
+    project_number: int | None = Field(
+        default=None,
+        gt=0,
+        le=100_000,
+        description="Project V2 board number; defaults to the configured board.",
+    )
 
 
 async def create_project_item(
@@ -121,6 +128,7 @@ async def create_project_item(
     apply_defaults: bool = True,
     owner: str | None = None,
     repo: str | None = None,
+    project_number: int | None = None,
 ) -> dict:
     """Create a new issue and add it to the GitHub Project board.
 
@@ -176,9 +184,32 @@ async def create_project_item(
         return handle_tool_error(exc, context="Create project item failed")
 
     repository = resolve_repository(owner, repo)
-    gh_client = factory.gh()
-    discovery_service = await factory.discovery_service(graphql_client)
-    project_service = await factory.project_service(graphql_client, gh_client)
+    context = project_context(project_number)
+    try:
+        gh_client = factory.gh(context=context)
+    except TypeError as exc:
+        if "context" not in str(exc):
+            raise
+        gh_client = factory.gh()
+    try:
+        discovery_service = await factory.discovery_service(
+            graphql_client,
+            context=context,
+        )
+    except TypeError as exc:
+        if "context" not in str(exc):
+            raise
+        discovery_service = await factory.discovery_service(graphql_client)
+    try:
+        project_service = await factory.project_service(
+            graphql_client,
+            gh_client,
+            context=context,
+        )
+    except TypeError as exc:
+        if "context" not in str(exc):
+            raise
+        project_service = await factory.project_service(graphql_client, gh_client)
     issue_service = factory.issue_service(gh_client, repository=repository)
 
     # â”€â”€ Step 3: Discover project metadata â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

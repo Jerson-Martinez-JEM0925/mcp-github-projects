@@ -23,6 +23,7 @@ from core.exceptions import (
 )
 from models.responses import ToolSuccess
 from core.factory import get_service_factory
+from core.project_scope import project_context
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,12 @@ class ArchiveItemInput(BaseModel):
     """
 
     item_id: str = Field(description="Project item node ID to archive")
+    project_number: int | None = Field(
+        default=None,
+        gt=0,
+        le=100_000,
+        description="Project V2 board number; defaults to the configured board.",
+    )
 
 
 class MoveToStatusInput(BaseModel):
@@ -45,6 +52,12 @@ class MoveToStatusInput(BaseModel):
     """
 
     item_id: str = Field(description="Project item node ID to update")
+    project_number: int | None = Field(
+        default=None,
+        gt=0,
+        le=100_000,
+        description="Project V2 board number; defaults to the configured board.",
+    )
 
 
 async def archive_project_item(params: ArchiveItemInput) -> dict:
@@ -63,10 +76,18 @@ async def archive_project_item(params: ArchiveItemInput) -> dict:
         message, suggestion) on failure.
     """
     try:
+        context = project_context(params.project_number)
         graphql_client = await get_service_factory().graphql()
-        gh_client = get_service_factory().gh()
-        discovery_service = await get_service_factory().discovery_service(graphql_client)
-        project_service = await get_service_factory().project_service(graphql_client, gh_client)
+        gh_client = get_service_factory().gh(context=context)
+        discovery_service = await get_service_factory().discovery_service(
+            graphql_client,
+            context=context,
+        )
+        project_service = await get_service_factory().project_service(
+            graphql_client,
+            gh_client,
+            context=context,
+        )
 
         # Get project metadata.
         metadata = await discovery_service.get_cached_or_discover()
@@ -133,7 +154,11 @@ async def move_to_done(params: MoveToStatusInput) -> dict:
         and status) on success, or ToolError (ok=False, error_type,
         message, suggestion) on failure.
     """
-    return await _move_to_status(params.item_id, "Done")
+    return await _move_to_status(
+        params.item_id,
+        "Done",
+        params.project_number,
+    )
 
 
 async def move_to_trash(params: MoveToStatusInput) -> dict:
@@ -151,10 +176,18 @@ async def move_to_trash(params: MoveToStatusInput) -> dict:
         and status) on success, or ToolError (ok=False, error_type,
         message, suggestion) on failure.
     """
-    return await _move_to_status(params.item_id, "Trash")
+    return await _move_to_status(
+        params.item_id,
+        "Trash",
+        params.project_number,
+    )
 
 
-async def _move_to_status(item_id: str, target_status: str) -> dict:
+async def _move_to_status(
+    item_id: str,
+    target_status: str,
+    project_number: int | None = None,
+) -> dict:
     """Move a project item to the specified status.
 
     Internal helper that handles the status transition for both
@@ -168,10 +201,18 @@ async def _move_to_status(item_id: str, target_status: str) -> dict:
         A dict conforming to ToolSuccess or ToolError.
     """
     try:
+        context = project_context(project_number)
         graphql_client = await get_service_factory().graphql()
-        gh_client = get_service_factory().gh()
-        discovery_service = await get_service_factory().discovery_service(graphql_client)
-        project_service = await get_service_factory().project_service(graphql_client, gh_client)
+        gh_client = get_service_factory().gh(context=context)
+        discovery_service = await get_service_factory().discovery_service(
+            graphql_client,
+            context=context,
+        )
+        project_service = await get_service_factory().project_service(
+            graphql_client,
+            gh_client,
+            context=context,
+        )
 
         # Get project metadata to resolve Status field and option IDs.
         metadata = await discovery_service.get_cached_or_discover()

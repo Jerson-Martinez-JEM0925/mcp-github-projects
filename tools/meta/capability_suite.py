@@ -22,6 +22,7 @@ from core.error_handling import handle_tool_error
 from core.hardening import bounded_text, normalize_unique, parse_json_array, parse_json_items, parse_json_object
 from models.responses import ToolSuccess
 from core.factory import get_service_factory
+from core.project_scope import project_context
 
 
 class IssueNumberInput(BaseModel):
@@ -49,6 +50,7 @@ class CriteriaInput(BaseModel):
 
 class ValueInput(BaseModel):
     value: str = Field(min_length=1, max_length=100)
+    project_number: int | None = Field(default=None, gt=0, le=100_000)
 
 
 class IssueSearchInput(BaseModel):
@@ -73,6 +75,7 @@ class CommentSearchInput(BaseModel):
 
 class ProjectReportInput(BaseModel):
     limit: int = Field(default=100, ge=1, le=100)
+    project_number: int | None = Field(default=None, gt=0, le=100_000)
 
 
 class ProjectFilterInput(BaseModel):
@@ -80,11 +83,13 @@ class ProjectFilterInput(BaseModel):
     assignee: str | None = Field(default=None, max_length=100)
     label: str | None = Field(default=None, max_length=100)
     limit: int = Field(default=100, ge=1, le=100)
+    project_number: int | None = Field(default=None, gt=0, le=100_000)
 
 
 class ProjectPlanInput(BaseModel):
     milestone: str | None = Field(default=None, max_length=100)
     limit: int = Field(default=100, ge=1, le=100)
+    project_number: int | None = Field(default=None, gt=0, le=100_000)
 
 
 class IssueTemplateInput(BaseModel):
@@ -118,9 +123,9 @@ class RiskInput(BaseModel):
     mitigations: list[str] = Field(default_factory=list, max_length=30)
 
 
-async def _client() -> GHCLIRunner:
+async def _client(project_number: int | None = None) -> GHCLIRunner:
     await get_service_factory().ensure_auth()
-    return get_service_factory().gh()
+    return get_service_factory().gh(context=project_context(project_number))
 
 
 def _success(data: dict[str, Any]) -> dict:
@@ -410,44 +415,49 @@ async def build_issue_bundle(params: IssueListInput) -> dict:
 
 # ── Project reporting and planning tools (21-40) ─────────────────────────────
 
-async def _project_items(client: GHCLIRunner, limit: int) -> list[dict[str, Any]]:
+async def _project_items(
+    client: GHCLIRunner,
+    limit: int,
+    project_number: int | None = None,
+) -> list[dict[str, Any]]:
     settings = get_settings()
-    result = await client.run(["project", "item-list", str(settings.project_number), "--owner", settings.org_name, "--format", "json", "--limit", str(limit)])
+    selected = project_context(project_number).target.project_number
+    result = await client.run(["project", "item-list", str(selected), "--owner", settings.org_name, "--format", "json", "--limit", str(limit)])
     return parse_json_items(result.stdout, context="gh project item-list")
 
 
 @_guard("Project health report failed")
 async def project_health_report(params: ProjectReportInput) -> dict:
     client = await _client()
-    items = await _project_items(client, params.limit)
+    items = await _project_items(client, params.limit, params.project_number)
     missing_title = [item for item in items if not item.get("title")]
     return _success({"total": len(items), "missing_title": len(missing_title), "health_pct": round((len(items) - len(missing_title)) / max(len(items), 1) * 100), "items": items})
 
 
 @_guard("Project status distribution failed")
 async def project_status_distribution(params: ProjectReportInput) -> dict:
-    items = await _project_items(await _client(), params.limit)
+    items = await _project_items(await _client(params.project_number), params.limit, params.project_number)
     counts = Counter(str(item.get("status", "Unknown")) for item in items)
     return _success({"distribution": dict(counts), "total": len(items)})
 
 
 @_guard("Project priority distribution failed")
 async def project_priority_distribution(params: ProjectReportInput) -> dict:
-    items = await _project_items(await _client(), params.limit)
+    items = await _project_items(await _client(params.project_number), params.limit, params.project_number)
     counts = Counter(str(item.get("priority", "Unknown")) for item in items)
     return _success({"distribution": dict(counts), "total": len(items)})
 
 
 @_guard("Project assignee load failed")
 async def project_assignee_load(params: ProjectReportInput) -> dict:
-    items = await _project_items(await _client(), params.limit)
+    items = await _project_items(await _client(params.project_number), params.limit, params.project_number)
     counts = Counter(str(item.get("assignees", "Unassigned")) for item in items)
     return _success({"assignee_load": dict(counts), "total": len(items)})
 
 
 @_guard("Project due date risk failed")
 async def project_due_date_risk(params: ProjectReportInput) -> dict:
-    items = await _project_items(await _client(), params.limit)
+    items = await _project_items(await _client(params.project_number), params.limit, params.project_number)
     now = datetime.now(timezone.utc).date().isoformat()
     risky = [item for item in items if item.get("status") not in {"Done", "✅ Done"} and item.get("dueDate", "") and str(item.get("dueDate")) < now]
     return _success({"overdue": risky, "count": len(risky), "as_of": now})
@@ -466,21 +476,21 @@ async def project_cycle_time(params: ProjectReportInput) -> dict:
 
 @_guard("Project orphan items failed")
 async def project_orphan_items(params: ProjectReportInput) -> dict:
-    items = await _project_items(await _client(), params.limit)
+    items = await _project_items(await _client(params.project_number), params.limit, params.project_number)
     orphaned = [item for item in items if not item.get("content") and not item.get("title")]
     return _success({"items": orphaned, "count": len(orphaned)})
 
 
 @_guard("Project missing fields failed")
 async def project_missing_fields(params: ProjectReportInput) -> dict:
-    items = await _project_items(await _client(), params.limit)
+    items = await _project_items(await _client(params.project_number), params.limit, params.project_number)
     missing = [{"id": item.get("id"), "title": item.get("title"), "missing": [field for field in ("status", "priority") if not item.get(field)]} for item in items]
     return _success({"items": [item for item in missing if item["missing"]], "count": sum(bool(item["missing"]) for item in missing)})
 
 
 @_guard("Project field options report failed")
 async def project_field_options_report(params: ProjectReportInput) -> dict:
-    items = await _project_items(await _client(), params.limit)
+    items = await _project_items(await _client(params.project_number), params.limit, params.project_number)
     return _success({"observed_statuses": sorted({str(item.get("status")) for item in items if item.get("status")}), "observed_priorities": sorted({str(item.get("priority")) for item in items if item.get("priority")})})
 
 
@@ -510,28 +520,28 @@ async def project_set_default_priority(params: ValueInput) -> dict:
 
 @_guard("Project bulk status plan failed")
 async def project_bulk_status_by_filter(params: ProjectFilterInput) -> dict:
-    items = await _project_items(await _client(), params.limit)
+    items = await _project_items(await _client(params.project_number), params.limit, params.project_number)
     selected = [item for item in items if not params.status or item.get("status") == params.status]
     return _success({"dry_run": True, "selected": selected, "count": len(selected), "requested_status": params.status})
 
 
 @_guard("Project bulk priority plan failed")
 async def project_bulk_priority_by_filter(params: ProjectFilterInput) -> dict:
-    items = await _project_items(await _client(), params.limit)
+    items = await _project_items(await _client(params.project_number), params.limit, params.project_number)
     selected = [item for item in items if not params.status or item.get("status") == params.status]
     return _success({"dry_run": True, "selected": selected, "count": len(selected), "requested_priority": params.label})
 
 
 @_guard("Project bulk due-date plan failed")
 async def project_bulk_due_date_by_filter(params: ProjectFilterInput) -> dict:
-    items = await _project_items(await _client(), params.limit)
+    items = await _project_items(await _client(params.project_number), params.limit, params.project_number)
     selected = [item for item in items if not params.status or item.get("status") == params.status]
     return _success({"dry_run": True, "selected": selected, "count": len(selected), "requested_due_date": params.label})
 
 
 @_guard("Project export failed")
 async def project_export_markdown(params: ProjectReportInput) -> dict:
-    items = await _project_items(await _client(), params.limit)
+    items = await _project_items(await _client(params.project_number), params.limit, params.project_number)
     rows = [f"| {item.get('id', '')} | {item.get('title', '')} | {item.get('status', '')} | {item.get('priority', '')} |" for item in items]
     markdown = "| ID | Título | Estado | Prioridad |\n|---|---|---|---|\n" + "\n".join(rows)
     return _success({"markdown": markdown, "count": len(items)})

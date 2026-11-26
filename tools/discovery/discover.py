@@ -12,11 +12,15 @@ import logging
 from core.error_handling import handle_tool_error
 from models.responses import ToolSuccess
 from core.factory import get_service_factory
+from core.project_scope import project_context
 
 logger = logging.getLogger(__name__)
 
 
-async def discover_ids(force: bool = False) -> dict:
+async def discover_ids(
+    force: bool = False,
+    project_number: int | None = None,
+) -> dict:
     """Discover GitHub Project V2 IDs (project, fields, options).
 
     Queries the GitHub GraphQL API for the project's node ID, all custom
@@ -32,8 +36,12 @@ async def discover_ids(force: bool = False) -> dict:
         or ToolError (ok=False, error_type, message, suggestion) on failure.
     """
     try:
+        context = project_context(project_number)
         graphql_client = await get_service_factory().graphql()
-        discovery_service = await get_service_factory().discovery_service(graphql_client)
+        discovery_service = await get_service_factory().discovery_service(
+            graphql_client,
+            context=context,
+        )
 
         if force:
             metadata = await discovery_service.discover(force=True)

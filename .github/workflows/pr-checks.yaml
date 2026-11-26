@@ -1,7 +1,8 @@
 ---
-# PR Checks
 # Pull-request validation: conventional-commit PR title, YAML lint,
-# shell lint, and branch-name convention.
+# shell lint, and branch-name convention. The title validator accepts the
+# standard Conventional Commit types plus repository-friendly dependency,
+# security, release, and hotfix categories.
 name: PR Checks
 run-name: 'PR #${{ github.event.pull_request.number }} — Checks'
 
@@ -29,24 +30,19 @@ jobs:
       statuses: write
     steps:
       - name: Lint PR title
-        uses: amannn/action-semantic-pull-request@2252a14e810aa9b85c2d560bd7070c802206ecf6 # v6.1.2
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          types: |
-            feat
-            fix
-            docs
-            chore
-            refactor
-            test
-            ci
-            perf
-            build
-            revert
-          requireScope: false
-          validateSingleCommit: false
-          wip: true
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          PATTERN='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert|deps|security|release|hotfix)(\([^()]+\))?!?: .+'
+          if [[ "$TITLE" =~ $PATTERN ]]; then
+            echo "✅ PR title is valid: $TITLE"
+          else
+            echo "❌ Invalid PR title: $TITLE"
+            echo "Expected: <type>(<optional-scope>): <description>"
+            echo "Allowed types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert, deps, security, release, hotfix"
+            exit 1
+          fi
 
   lint-yaml:
     name: YAML Lint

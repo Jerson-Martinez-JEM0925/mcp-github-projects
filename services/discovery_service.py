@@ -58,7 +58,14 @@ class DiscoveryService:
         self._context = context or GitHubContext.from_settings(
             token_provider=lambda: ""
         )
-        self._cache_path = cache_path or get_settings().cache_path
+        settings = get_settings()
+        default_cache_path = settings.cache_path
+        if self._context.target.project_number != settings.project_number:
+            default_cache_path = default_cache_path.with_name(
+                f"{default_cache_path.stem}-project-"
+                f"{self._context.target.project_number}{default_cache_path.suffix}"
+            )
+        self._cache_path = cache_path or default_cache_path
 
     async def discover(self, force: bool = False) -> ProjectMetadata:
         """Execute the discovery query and cache the results.
